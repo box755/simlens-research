@@ -1,0 +1,49 @@
+# Model weights — 不上 git
+models/**
+!models/.gitkeep
+
+# Data — 影片素材、處理過的 segment、蒸餾資料
+data/**
+!data/.gitkeep
+
+# Outputs — LoRA adapter, training logs, checkpoints
+outputs/**
+!outputs/.gitkeep
+
+# Notebook 輸出
+notebooks/**/.ipynb_checkpoints/
+notebooks/**/*-checkpoint.ipynb
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.python-version
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets — API keys, HuggingFace token
+.env
+.env.local
+*.key
+secrets/
+hf_token.txt
+
+# Wandb / 訓練追蹤
+wandb/
+mlruns/
+
+# 暫存
+*.log
+*.tmp
+*.bak

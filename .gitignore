@@ -10,5 +10,28 @@
 !.claude/
 !.claude/**
 
+# Allow skill-packs (你選擇要推 skill-packs)
+!skill-packs/
+!skill-packs/**
+
+# Allow experiments folder (research code)
+!experiments/
+!experiments/**
+
+# But still ignore experiments outputs
+experiments/data/**
+experiments/models/**
+experiments/outputs/**
+!experiments/data/.gitkeep
+!experiments/models/.gitkeep
+!experiments/outputs/.gitkeep
+
+# Ignore secrets in experiments
+experiments/.env
+experiments/.env.local
+
+# Always ignore the docker SimLens product (it has its own git repo)
+simlens/
+
 # Allow .gitignore itself
 !.gitignore
