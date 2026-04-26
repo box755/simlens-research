@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/kk865/OneDrive/Desktop/simlens��s/**)"
+      "Read(//c/Users/kk865/OneDrive/Desktop/simlens��s/**)",
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\kk865\\\\OneDrive\\\\Desktop\\\\simlens研究\\\\simlens\\\\Simlens\\\\backend\" -Force | ForEach-Object { \"$\\($_.Mode\\)  $\\($_.Name\\)\" })"
     ]
   }
 }
