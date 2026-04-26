@@ -1,0 +1,14 @@
+# Ignore everything by default
+/*
+/*/
+
+# Allow markdown files at any depth
+!*.md
+!**/*.md
+
+# Allow Claude skills
+!.claude/
+!.claude/**
+
+# Allow .gitignore itself
+!.gitignore
