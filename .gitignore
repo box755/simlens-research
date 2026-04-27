@@ -6,6 +6,14 @@
 !*.md
 !**/*.md
 
+# Allow PowerPoint reports at any depth
+!*.pptx
+!**/*.pptx
+
+# Allow images folder (for reports / figures)
+!images/
+!images/**
+
 # Allow Claude skills
 !.claude/
 !.claude/**
@@ -32,6 +40,10 @@ experiments/.env.local
 
 # Always ignore the docker SimLens product (it has its own git repo)
 simlens/
+
+# Office temp / lock files
+~$*
+*.tmp
 
 # Allow .gitignore itself
 !.gitignore
