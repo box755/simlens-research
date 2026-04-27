@@ -186,7 +186,8 @@ add_title_with_redline(s, "Goal")
 add_bullets(s, [
     (0, "Build SimLens — a segment-level persona-conditioned video audience simulator."),
     (0, "Quantitative KPIs:"),
-    (1, "12 segments × 8 personas = 96-cell reaction matrix per 2-minute video."),
+    (1, "Per video: 12 segments × 8 personas = 96-cell reaction matrix"),
+    (1, "(implemented via 8 per-persona LoRA adapters on a shared Llama-3B base — swapped at inference time)."),
     (1, "Latency ≤ 15s on RTX 3090 (vs. ~120s for Claude API)."),
     (1, "Persona Consistency ≥ 0.80 (target: surpass Claude teacher 0.74)."),
     (1, "Segment Alignment Accuracy ≥ 80% (SimTube baseline: not applicable)."),
@@ -195,7 +196,7 @@ add_bullets(s, [
     (1, "C1 (System): first segment-level persona-conditioned video simulator."),
     (1, "C2 (Method): two-stage Distillation + RLAIH with 6-aspect reward."),
     (1, "C3 (Empirical): 3B student matches/exceeds 600B-class teacher on domain metrics."),
-], top=Inches(1.2), base_size=17, indent_size=14)
+], top=Inches(1.2), base_size=16, indent_size=13)
 add_footer(s, 5)
 
 # Slide 6: Related Work — SimTube
@@ -233,7 +234,26 @@ p.text = "[2] Bi & Xu. UMaT: Unified Multi-Modal Framework with Semantic and Tem
 p.runs[0].font.size = Pt(10); p.runs[0].font.name = "Times New Roman"; p.runs[0].font.color.rgb = GREY
 add_footer(s, 7)
 
-# Slide 8: Work Comparison
+# Slide 8: Related Work — RLAIH (Self-Rewarding LM)
+s = slide_blank(prs)
+add_title_with_redline(s, "Related Work — RLAIH (Self-Rewarding LM)")
+add_bullets(s, [
+    (0, "Title: Self-Rewarding Language Models", None),
+    (0, "Problem: RLHF is bottlenecked by costly human preference data and a frozen reward model that cannot improve with the LLM.", None),
+    (0, "Approach: an LLM both generates responses AND scores its own outputs via LLM-as-a-Judge → builds preference pairs → Iterative DPO (M1 → M2 → M3).", None),
+    (1, "Llama-2-70B Iter 3 reaches 20.44% win rate on AlpacaEval 2.0 — surpassing Claude 2, Gemini Pro, and GPT-4 0613.", None),
+    (1, "Reward-modeling pairwise accuracy improves across iterations: 65.1% → 78.7% → 80.4% → 81.7%.", None),
+    (0, "Limitation: single-aspect additive reward — no domain-specific dimensions; possible length / reward-hacking bias.", RED),
+    (1, "Generation length grows from 1092 → 2552 tokens across iterations (length bias risk).", RED),
+    (0, "SimLens extension: replace single reward with 6-aspect domain-specific reward (Persona Cons. + Linguistic + Segment Relevance + ...).", None),
+], top=Inches(1.2), base_size=15, indent_size=12)
+tb = s.shapes.add_textbox(Inches(0.4), Inches(6.55), Inches(12.5), Inches(0.4))
+p = tb.text_frame.paragraphs[0]
+p.text = "[3] Yuan et al. Self-Rewarding Language Models. arXiv:2401.10020 (v3, 2025), Meta + NYU."
+p.runs[0].font.size = Pt(10); p.runs[0].font.name = "Times New Roman"; p.runs[0].font.color.rgb = GREY
+add_footer(s, 8)
+
+# Slide 9: Work Comparison
 s = slide_blank(prs)
 add_title_with_redline(s, "Work Comparison")
 sub = s.shapes.add_textbox(Inches(0.6), Inches(1.05), Inches(12), Inches(0.45))
@@ -284,9 +304,9 @@ tb = s.shapes.add_textbox(Inches(0.4), Inches(6.55), Inches(12.5), Inches(0.4))
 p = tb.text_frame.paragraphs[0]
 p.text = "[1] Hung et al. SimTube. arXiv:2411.09577, 2024."
 p.runs[0].font.size = Pt(10); p.runs[0].font.name = "Times New Roman"; p.runs[0].font.color.rgb = GREY
-add_footer(s, 8)
+add_footer(s, 9)
 
-# Slide 9: Proposed Framework section title
+# Slide 10: Proposed Framework section title
 s = slide_blank(prs)
 tb = s.shapes.add_textbox(Inches(0.5), Inches(2.8), Inches(12.3), Inches(2))
 tf = tb.text_frame
@@ -296,9 +316,9 @@ p.text = "SimLens: Distillation + RLAIH for\nSegment-Level Persona Reaction Gene
 p.alignment = PP_ALIGN.CENTER
 for r in p.runs:
     r.font.size = Pt(32); r.font.bold = True; r.font.name = "Times New Roman"; r.font.color.rgb = DARK
-add_footer(s, 9)
+add_footer(s, 10)
 
-# Slide 10: Architecture diagram placeholder
+# Slide 11: Architecture diagram placeholder
 s = slide_blank(prs)
 add_title_with_redline(s, "The Architecture of SimLens")
 # placeholder box
@@ -326,9 +346,9 @@ p.text = "Stage A: Whisper + LLaVA-NeXT (UMaT-style temporal alignment) → 12 e
          "Stage C: same Llama-3B base → sentiment + report"
 for r in p.runs:
     r.font.size = Pt(11); r.font.italic = True; r.font.color.rgb = DARK; r.font.name = "Times New Roman"
-add_footer(s, 10)
+add_footer(s, 11)
 
-# Slide 11: Method — Phase 1 Distillation
+# Slide 12: Method — Phase 1 Distillation
 s = slide_blank(prs)
 add_title_with_redline(s, "Method (1/2) — Phase 1: Knowledge Distillation")
 add_bullets(s, [
@@ -339,17 +359,19 @@ add_bullets(s, [
     (1, "For each (video, segment, persona) tuple: prompt Claude with cumulative narrative + current segment + persona YAML."),
     (1, "Output: a 10–50 word comment OR exactly \"None\" — explicitly modeling no-reaction behavior."),
     (1, "Total: 9,600 cells → ~4,800 comments + ~4,800 None labels (cost ≈ $115)."),
-    (0, "SFT training: 8 independent LoRA adapters (rank=8) on 4-bit GPTQ Llama-3.2-3B-Instruct."),
+    (0, "SFT training: 8 independent LoRA adapters (rank=8) on a shared 4-bit GPTQ Llama-3.2-3B base — one adapter per persona."),
+    (1, "Why per-persona LoRA (not single LoRA + persona prompt)?  Hard separation prevents persona leakage; each adapter specializes on one viewer's distribution.", RED),
+    (1, "Each adapter ~25 MB; 8 adapters total ~200 MB. Swapped at inference time on the same frozen base.", None),
     (0, "Novelty: training on \"None\" labels — teaches the model when a persona stays silent."),
-], top=Inches(1.2), base_size=16, indent_size=14)
-add_footer(s, 11)
+], top=Inches(1.1), base_size=15, indent_size=12)
+add_footer(s, 12)
 
-# Slide 12: Method — Phase 2 RLAIH
+# Slide 13: Method — Phase 2 RLAIH
 s = slide_blank(prs)
 add_title_with_redline(s, "Method (2/2) — Phase 2: RLAIH with 6-Aspect Reward")
 add_bullets(s, [
     (0, "Goal: surpass Claude (teacher) on domain-specific dimensions via AI-feedback alignment."),
-    (0, "Pipeline (per LoRA, iterated 2 rounds):"),
+    (0, "Pipeline (per LoRA, iterated 2 rounds — following Self-Rewarding LM [Yuan et al., 2024]):"),
     (1, "Generate N=4 candidates per (segment, persona) prompt."),
     (1, "Score each candidate with 6 reward functions; build chosen/rejected preference pairs; run DPO."),
     (0, "6-aspect reward (with weights):"),
@@ -360,10 +382,10 @@ add_bullets(s, [
     (1, "R_coherence (10%) — Qwen judge."),
     (1, "R_engagingness (10%) — UniEval."),
     (0, "Robustness: multi-judge ensemble (Qwen + Gemma2 + Llama-3.1) + GPT-4o spot-check on 200 samples."),
-], top=Inches(1.2), base_size=15, indent_size=13)
-add_footer(s, 12)
+], top=Inches(1.1), base_size=14, indent_size=12)
+add_footer(s, 13)
 
-# Slide 13: Experiment — Data + Metrics
+# Slide 14: Experiment — Data + Metrics
 s = slide_blank(prs)
 add_title_with_redline(s, "Experiments — Data & Evaluation Metrics")
 add_bullets(s, [
@@ -379,9 +401,9 @@ add_bullets(s, [
     (1, "Segment-localization quiz: given a generated comment, identify which of 12 segments it belongs to."),
     (0, "GPT-4o spot-check (200 samples) — verify local-judge ↔ GPT-4o Spearman ρ > 0.7."),
 ], top=Inches(1.2), base_size=15, indent_size=13)
-add_footer(s, 13)
+add_footer(s, 14)
 
-# Slide 14: Expected Results + Ablation
+# Slide 15: Expected Results + Ablation
 s = slide_blank(prs)
 add_title_with_redline(s, "Expected Results & Ablation Study")
 
@@ -461,9 +483,9 @@ for it in items:
     pp.text = "• " + it
     pp.runs[0].font.size = Pt(13); pp.runs[0].font.name = "Times New Roman"; pp.runs[0].font.color.rgb = DARK
     pp.space_after = Pt(2)
-add_footer(s, 14)
+add_footer(s, 15)
 
-# Slide 15: Conclusion
+# Slide 16: Conclusion
 s = slide_blank(prs)
 add_title_with_redline(s, "Conclusion")
 add_bullets(s, [
@@ -479,19 +501,19 @@ add_bullets(s, [
     (1, "On-device, $0 inference cost — democratizes pre-publish audience analysis for small creators."),
     (1, "Foundation for future work: scaling to longer videos, more personas, real-time interaction."),
 ], top=Inches(1.2), base_size=16, indent_size=13)
-add_footer(s, 15)
+add_footer(s, 16)
 
-# Slide 16: References
+# Slide 17: References
 s = slide_blank(prs)
 add_title_with_redline(s, "References")
 refs = [
     "[1] Hung et al. SimTube: Generating Simulated Video Comments through Multimodal AI. arXiv:2411.09577, 2024.",
     "[2] Bi & Xu. Everything Can Be Described in Words: A Unified Multi-Modal Framework with Semantic and Temporal Alignment (UMaT). arXiv:2503.09081, 2025.",
-    "[3] Samuel et al. PersonaGym: Evaluating Persona Agents and LLMs. EMNLP 2025 Findings.",
-    "[4] Rafailov et al. Direct Preference Optimization (DPO). NeurIPS 2023.",
-    "[5] Lee et al. RLAIF: Scaling Reinforcement Learning from Human Feedback with AI Feedback. arXiv 2023, Google DeepMind.",
-    "[6] Williams et al. MORLAIF: Multi-Objective Reinforcement Learning from AI Feedback. arXiv:2406.07496, 2024.",
-    "[7] Yuan et al. Self-Rewarding Language Models. arXiv:2401.10020, 2024.",
+    "[3] Yuan et al. Self-Rewarding Language Models. arXiv:2401.10020 (v3, 2025), Meta + NYU.",
+    "[4] Samuel et al. PersonaGym: Evaluating Persona Agents and LLMs. EMNLP 2025 Findings.",
+    "[5] Rafailov et al. Direct Preference Optimization (DPO). NeurIPS 2023.",
+    "[6] Lee et al. RLAIF: Scaling Reinforcement Learning from Human Feedback with AI Feedback. arXiv 2023, Google DeepMind.",
+    "[7] Williams et al. MORLAIF: Multi-Objective Reinforcement Learning from AI Feedback. arXiv:2406.07496, 2024.",
     "[8] Hu et al. LoRA: Low-Rank Adaptation of Large Language Models. ICLR 2022.",
     "[9] Liu et al. LLaVA-NeXT: Improved Reasoning, OCR, and World Knowledge, 2024.",
     "[10] Radford et al. Robust Speech Recognition via Large-Scale Weak Supervision (Whisper). 2022.",
@@ -506,7 +528,7 @@ for i, r in enumerate(refs):
     for run in p.runs:
         run.font.size = Pt(13); run.font.name = "Times New Roman"; run.font.color.rgb = DARK
     p.space_after = Pt(4)
-add_footer(s, 16)
+add_footer(s, 17)
 
 prs.save(OUTPUT)
 print(f"Saved: {OUTPUT}")
