@@ -768,11 +768,23 @@ dpo_config = {
 
 ### 4.6 Phase 2 學術依據
 
+> **方法定位**：SimLens Phase 2 = **RLAIF + DPO**（feedback 來源是 AI，訓練演算法是 DPO）。
+> 兩個維度需分開理解：
+> - **Feedback 維度**：RLHF / **RLAIF** / RLAIH —— SimLens 用 AI feedback (Qwen judge)
+> - **演算法維度**：PPO / REINFORCE / **DPO** / ORPO / GRPO —— SimLens 用 DPO
+>
+> 對應論文範例：
+> - RLHF + PPO：InstructGPT (Ouyang 2022)
+> - RLHF + DPO：DPO 原論文 (Rafailov 2023)
+> - **RLAIF + REINFORCE：Lee et al. 2023**（本表參考的論文）
+> - RLAIF + PPO：Constitutional AI (Bai 2022)
+> - **RLAIF + DPO：SimLens 採用的組合**
+
 | 設計選擇 | 引用文獻 | 借鏡之處 |
 |---------|---------|---------|
 | RLAIH 用於 alignment | RLAIF (Lee et al., 2023, Google DeepMind) | AI feedback 達 RLHF 同等效果 |
 | **不訓練 reward model（用 frozen Qwen-32B）** | **RLAIF (Lee et al., 2023) d-RLAIF** | 證明 frozen LLM 直接給 reward 比訓練 RM 更穩，避開 RM staleness |
-| DPO 取代 PPO | DPO (Rafailov et al., NeurIPS 2023) | 小資料更穩定，適合 LoRA |
+| **DPO 取代 REINFORCE / PPO** | DPO (Rafailov et al., NeurIPS 2023) | REINFORCE 是 RLAIF 主流（Lee et al. 2023）、PPO 是 RLHF 主流（InstructGPT）；DPO 對 LoRA 微調更友善、24GB 單卡跑得動、穩定性高 |
 | **DPO on LoRA adapter（同 LoRA 繼續訓練）** | **Thakkar et al. (ACL 2024 Main)、Multi-MLLM Distillation (arXiv 2505.22517)** | 兩篇皆系統證明「LoRA SFT → 同 LoRA DPO」可行，是 SimLens Phase 2 的權威背書 |
 | Multi-aspect reward | MORLAIF (Williams, arXiv 2406.07496) | 多目標 reward 比單一更穩 |
 | 5 個 reward dimension | SimTube + PersonaGym + PersoBench + Score Before You Speak | 各有頂會背書 |
