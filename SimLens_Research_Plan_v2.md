@@ -12,7 +12,8 @@
 ```
 研究問題：
    能否用 3B 小模型在「缺乏真實 persona 觀影行為資料」的場景下，
-   訓練出能對影片每個時間段生成 persona-specific 反應的多受眾模擬系統？
+   訓練出能對短影音每個時間段生成 persona-specific 反應的多受眾模擬系統？
+   （Scope: short-form video, typical 30s–3min — TikTok / Reels / YouTube Shorts）
 
 核心方法：
    Stage A：UMaT-inspired temporal alignment
@@ -27,7 +28,8 @@
 
 關鍵差異化（vs SimTube）：
    SimTube：影片 → 整體理解 → 一條評論
-   SimLens：影片 → 12 段 → 8 persona × 12 段 = 96 個段層級反應
+   SimLens：影片 → N 個 10 秒段 → 8 persona × N 段 = 8N 個段層級反應
+            （avg ~12 段 / 96 cells per video，range 3–18 段視影片長度而定）
    
    SimLens 提供「段層級 persona 反應分析」，SimTube 只能給整片評論。
 
@@ -48,7 +50,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                    輸入：2 分鐘短影片                    │
+│             輸入：短影音 (30s–3min, e.g., TikTok/Reels) │
 └──────────────────────────────────────────────────────┘
                          ↓
 ┌──────────────────────────────────────────────────────┐
@@ -60,11 +62,12 @@
 │                                                       │
 │   LLaVA-NeXT-13B                                      │
 │     → 每 10 秒抽 4 frames + audio context              │
-│     → 12 個段描述（每段 ~150 字視覺敘述）                  │
+│     → N 個段描述（每段 ~150 字視覺敘述）                  │
+│       N = ⌈video_duration / 10s⌉, typically 3–18      │
 │                                                       │
 │   時間軸對齊（UMaT 風格）                                │
 │     → 把 Whisper 文字插入對應 LLaVA 段                    │
-│     → 12 個 enriched segments                          │
+│     → N 個 enriched segments                           │
 │       每段 = {t_start, t_end, visual_desc, transcript}  │
 └──────────────────────────────────────────────────────┘
                          ↓
@@ -80,13 +83,14 @@
 │             - 可能是評論文字                            │
 │             - 可能是 None（沒反應）                      │
 │                                                       │
-│   產出：12 段 × 8 persona = 96 個 cell 的反應矩陣         │
+│   產出：N 段 × 8 persona = 8N 個 cell 的反應矩陣          │
+│        (avg ~96 cells / video)                         │
 └──────────────────────────────────────────────────────┘
                          ↓
 ┌──────────────────────────────────────────────────────┐
 │ Stage C：報告整合（同一個 Llama-3.2-3B，無 adapter）      │
 │                                                       │
-│   Input: 96 cell 反應矩陣 + 影片敘述                     │
+│   Input: 8N cell 反應矩陣 + 影片敘述                      │
 │   Output: 結構化報告                                    │
 │     - 跨受眾比較（哪段 P1 反應強、哪段 P5 冷淡）           │
 │     - Persona 共鳴度分析（每個 persona 最有共鳴的段）      │
@@ -103,7 +107,7 @@
 | 10 秒等長分段 | UMaT structured segmentation | 固定段長度避免 fragmentation |
 | Llama-3.2-3B 為 student | Meta Llama 3.2 release notes (2024) | 1B 太弱、8B 太大，3B 是甜蜜點 |
 | 4-bit GPTQ 量化 | LLaMA-Factory 官方推薦工作流 | 在 24GB VRAM 跑得動 |
-| Multi-LoRA per persona | LoRA-MoE (2024)、PersonaLoRA | 每 persona 一個 adapter 表達力強 |
+| Multi-LoRA per persona | **Neeko (EMNLP 2024)**、LoRA-MoE (2024) | 已驗證 per-character LoRA 優於 single LoRA + prompt |
 | Same model for generation + report | Tülu 3 multi-task post-training | 一模多用節省部署成本 |
 
 ### 1.2 兩個關鍵設計決策的學術背書
@@ -112,7 +116,7 @@
 
 #### 決策 A：為什麼分離「感知（Whisper + LLaVA-NeXT）」與「推理（Llama Agent）」，不直接用原生多模態模型一次到位？
 
-**潛在質疑**：reviewer 可能會問「為什麼不把 2 分鐘影片直接餵給 Gemini 2.5 Flash 或 GPT-4o，讓它一次給出 persona 評論？」
+**潛在質疑**：reviewer 可能會問「為什麼不把短影音直接餵給 Gemini 2.5 Flash 或 GPT-4o，讓它一次給出 persona 評論？」
 
 **學術背書 1：感知與推理分離有可解釋性與可除錯性優勢**
 - **VideoMultiAgents (Kugo et al., arXiv 2504.20091)** 證明：將感知任務交給專門的代理人處理並產出獨立文字報告，能讓推理 agent 在透明基礎上運作，避免單一巨型模型的黑箱干擾與錯誤傳播。在 Intent-QA 上達到 79.0% (+6.2% over previous SOTA)。
@@ -125,7 +129,7 @@
 
 #### 決策 B：為什麼要將影片分段（每 10 秒一段），不直接整段處理？
 
-**潛在質疑**：reviewer 可能會問「2 分鐘短影音直接整段餵給 LLaVA-NeXT 不就好了？」
+**潛在質疑**：reviewer 可能會問「短影音直接整段餵給 LLaVA-NeXT 不就好了？」
 
 **學術背書 1：分段是時間軸對齊的最穩健方式**
 - **UMaT (Bi & Xu, arXiv 2503.09081)** 明確指出，要在影片任務中維持語義與時間一致性，必須將視覺描述與 ASR 轉錄「依時間戳切分為結構化片段（structured segments based on their timestamps）」。將短片段整合能確保視覺與聽覺在時間與語義上的絕對對齊。
@@ -134,7 +138,7 @@
 **學術背書 2：分段能規避視覺模型的記憶體與品質下降問題**
 - **QMAVIS (Lin et al., arXiv 2601.06573)** 證明：採用 chunking + late fusion 策略（將影片切成短片段、各模態獨立處理、最後 LLM 整合），在 VideoMME 長影片基準上比端到端原生多模態模型（VideoLlaMA2、InternVL2）**準確率高出 38.75%**。論文指出原生模型為了塞進 context window 必須採用暴力 down-sampling，導致關鍵細節遺失。
 
-**對 SimLens 的意義**：即使 SimLens 處理的是 2 分鐘短影音，分段設計仍提供三個關鍵價值：(1) 時間軸錨點讓 agent 反應與當下影片內容精確對應；(2) 每段獨立餵給 LLaVA 能維持最高品質的視覺描述；(3) 12 個段落產生「12 段 × 8 persona = 96 cells」的反應矩陣，是 SimLens 段層級分析能力的基礎，無法以整片處理達成。
+**對 SimLens 的意義**：即使 SimLens 處理的是短影音，分段設計仍提供三個關鍵價值：(1) 時間軸錨點讓 agent 反應與當下影片內容精確對應；(2) 每段獨立餵給 LLaVA 能維持最高品質的視覺描述；(3) N 個段落產生「N 段 × 8 persona = 8N cells」的反應矩陣（avg ~96 cells），是 SimLens 段層級分析能力的基礎，無法以整片處理達成。
 
 ---
 
@@ -265,7 +269,7 @@ Step 1.1: 影片素材收集
    注意：這只是「素材」，不是 ground truth
    
    來源：YouTube Data API v3
-   數量：100 部 2 分鐘短影片
+   數量：100 部短影音 (30s–3min, avg ~2min)
    類型分佈：
      - Vlog/Lifestyle：20 部
      - Tech Review：20 部
@@ -286,7 +290,7 @@ Step 1.2: UMaT-inspired 時序對齊 Pipeline
    (a) Whisper-Large-v3 整段轉錄（含時間戳）
        輸出：[(0.5s, "Hi everyone"), (2.1s, "today..."), ...]
    
-   (b) LLaVA-NeXT 段描述（每 10 秒一段，共 12 段）
+   (b) LLaVA-NeXT 段描述（每 10 秒一段，共 N = ⌈duration/10s⌉ 段，typical 3–18）
        對每段：抽 4 frames（在段內 t=0%, 33%, 66%, 100%）
               拼接成 panel image
               連同段內 transcript 餵給 LLaVA-NeXT
@@ -341,7 +345,8 @@ Step 1.3: Claude 蒸餾資料生成（核心）
    └─────────────────────────────────────────────────┘
    
    產出量：
-     100 影片 × 12 段 × 8 persona = 9,600 個 cells
+     100 影片 × avg 12 段 × 8 persona ≈ 9,600 個 cells
+     （actual cell count 隨影片長度浮動，範圍 ~2,400–14,400）
      其中約 50% 是 None（無反應）
      實際生成評論：~4,800 筆
      
@@ -350,7 +355,7 @@ Step 1.3: Claude 蒸餾資料生成（核心）
      這是 SimTube 沒有的設計（SimTube 強迫每個 persona 都對整片評論）
    
    成本估算：
-     9,600 calls × ~$0.012/call ≈ $115 USD
+     ~9,600 calls × ~$0.012/call ≈ $115 USD（estimated, 含 ±30% buffer）
 ```
 
 ### 3.3 SFT 訓練設定（蒸餾階段）
@@ -377,8 +382,8 @@ config = {
     },
     
     "data": {
-        "samples_per_persona": ~1200,  # 含 None
-        "total_samples": ~9600,
+        "samples_per_persona": ~1200,  # avg, 含 None
+        "total_samples": ~9600,        # avg across 100 videos w/ varying length
         "split": {"train": 0.85, "val": 0.10, "test": 0.05}
     }
 }
@@ -430,9 +435,11 @@ def generate_segment_reaction(video, segment_i, persona_id):
 | Claude as teacher | OpenCharacter (arXiv 2501.15427) | 大模型蒸餾 role-playing 行為 |
 | Synthetic persona data | PersonaLLM (Jiang et al., 2024) | 合成 persona dialog 訓練 |
 | **時序對齊 narrative** | **UMaT (Bi & Xu, arXiv 2503.09081)** | structured text representation |
-| LoRA per persona | LoRA-MoE (2024) | 多 adapter 比 single adapter 強 |
-| 4-bit GPTQ + LoRA rank 8 | LLaMA-Factory 官方文件 | 標準 PEFT 工作流 |
-| **包含 None 反應的訓練** | 本研究新增（受 sparse retrieval 啟發） | UMaT 的 sparse information 概念 |
+| LoRA per persona | **Neeko (EMNLP 2024)**、LoRA-MoE (2024) | per-character LoRA 已被證明優於 single LoRA + prompt |
+| 4-bit GPTQ + LoRA rank 8 | LLaMA-Factory 官方文件、**Thakkar et al. (ACL 2024)** | 標準 PEFT 工作流；ACL 2024 Main 提供 adapter rank sensitivity 指引 |
+| **LoRA SFT 後續可接 DPO** | **Thakkar et al. (ACL 2024 Main, arXiv 2406.04879)** | 300+ 實驗證明 LoRA-SFT → LoRA-DPO 範式可行；SimLens 兩階段訓練的權威背書 |
+| **兩階段 (SFT + DPO) on LoRA** | **Multi-MLLM Distillation (Gu et al., arXiv 2505.22517, 2025/05)** | 直接前例：LoRA SFT + 同 LoRA DPO + AI 訊號當 preference，在 ~7B 模型 + 多教師蒸餾場景達 SOTA |
+| **包含 None 反應的訓練** | **Action-Guided Engagement (arXiv 2502.12073)** | 平台層級「ignore」action 已有先例，SimLens 延伸至 persona-internal 層級 |
 
 ---
 
@@ -497,8 +504,24 @@ Step 2.4: DPO Update
 Step 2.5: 迭代 DPO（2 輪）
 ═══════════════════════════════════════════════════════
    重複 Step 2.1-2.4 共 2 輪
-   依據：Self-Rewarding LM (Yuan et al., 2024)
+   
+   依據：Self-Rewarding LM (Yuan et al., 2024) 的 Iterative DPO 部分
         Bootstrapping with Implicit Rewards (ICLR 2025)
+   
+   重要區別：SimLens 不採用 Self-Rewarding LM 的 self-judge 機制
+     - Self-Rewarding LM: 同一個 70B 模型既當 actor 又當 judge
+     - SimLens: actor (Llama-3.2-3B) 與 judge (Qwen3-32B-Q4) 為不同模型
+   
+   理由：
+     (1) Llama-3B 太小，同時做兩件事會兩邊都做不好
+         （Self-Rewarding 用 70B 才能可靠自評）
+     (2) 自評有 self-bias，偏好自己風格的答案
+     (3) Qwen3-32B > Llama-3B，符合「強者評弱者」的 judge 設計準則
+     (4) 6-aspect 結構化 reward 需要 external judge + PersonaGym rubric 才好做
+   
+   僅借鏡的概念：
+     Iterative DPO（M1 → M2 → M3 多輪 DPO 可持續改善 alignment）
+     —— 此結論不依賴 self-rewarding 機制也成立
 ```
 
 ### 4.3 6 個 Reward 完整定義
@@ -748,11 +771,14 @@ dpo_config = {
 | 設計選擇 | 引用文獻 | 借鏡之處 |
 |---------|---------|---------|
 | RLAIH 用於 alignment | RLAIF (Lee et al., 2023, Google DeepMind) | AI feedback 達 RLHF 同等效果 |
+| **不訓練 reward model（用 frozen Qwen-32B）** | **RLAIF (Lee et al., 2023) d-RLAIF** | 證明 frozen LLM 直接給 reward 比訓練 RM 更穩，避開 RM staleness |
 | DPO 取代 PPO | DPO (Rafailov et al., NeurIPS 2023) | 小資料更穩定，適合 LoRA |
+| **DPO on LoRA adapter（同 LoRA 繼續訓練）** | **Thakkar et al. (ACL 2024 Main)、Multi-MLLM Distillation (arXiv 2505.22517)** | 兩篇皆系統證明「LoRA SFT → 同 LoRA DPO」可行，是 SimLens Phase 2 的權威背書 |
 | Multi-aspect reward | MORLAIF (Williams, arXiv 2406.07496) | 多目標 reward 比單一更穩 |
 | 5 個 reward dimension | SimTube + PersonaGym + PersoBench + Score Before You Speak | 各有頂會背書 |
 | **Segment Relevance reward** | 本研究新增（受 UMaT 啟發） | 時序對齊作為 generation 訊號 |
 | 本地 LLM-as-Judge | "Replacing the Judge" (SambaNova, 2024) | Llama-3.1 70B ≈ GPT-4 Turbo |
+| **AI 訊號驅動的 preference data** | **Multi-MLLM Distillation (Gu et al., 2025/05)** | 直接前例：teacher 不一致即作為 preference signal |
 | Iterative DPO | Bootstrapping with Implicit Rewards (ICLR 2025) | 多輪迭代提升 alignment |
 | Multi-judge ensemble | Judging the Judges (Krishna et al., 2024) | ensemble 比單一 judge 可靠 |
 
@@ -813,7 +839,7 @@ auto_metrics = {
 human_eval = {
     "participants": 25,
     "platform": "Upwork or Prolific",
-    "tasks_per_participant": "1 video (2 min) + 12 segment reactions × 3 personas",
+    "tasks_per_participant": "1 short-form video + N segment reactions × 3 personas",
     "video_count": 8,
     "rating_scale": "7-point Likert",
     "dimensions": [
@@ -859,6 +885,10 @@ A7. - w/o None handling (force every segment)   ← 證明 None 設計必要
 A8. - w/o Iterative DPO (1 round only)          ← 證明迭代必要
 ```
 
+註：Segment length 採用 10 秒固定分段（borrow from UMaT structured segmentation）。
+    Length sweep ablation（5s / 10s / 20s）保留為 future work，不在本研究範圍內。
+    本研究 scope 鎖定在 short-form video (30s–3min)，段長為 fixed-length design choice。
+
 ### 5.4 預期結果表（你論文的 main result）
 
 #### Table 1: 主結果（自動指標）
@@ -888,22 +918,22 @@ SimLens Full (SFT + DPO) ⭐     | 0.62      | 0.83    | 0.81       | 0.78    | 
 ```
 Method                | Segment Alignment Accuracy | None Prediction F1
 ─────────────────────────────────────────────────────────────────────
-Random baseline       | 8.3% (1/12)                | 0.50
+Random baseline       | 1/N (8.3% @ 12 segs)       | 0.50
 Llama-3B zero-shot    | 32%                        | 0.41
 Claude zero-shot      | 71%                        | 0.62
 SimLens Full          | 84%                        | 0.78
                       | (人類為 ~89%)               |
 ```
 
-#### Table 3: 效率比較
+#### Table 3: 效率比較（評估 reference: 2-min short-form video, 12 segs）
 
 ```
-Method            | Model Size  | VRAM    | Latency (2-min vid) | Cost / 1000 evals
+Method            | Model Size  | VRAM    | Latency (per 2-min vid)| Cost / 1000 evals
 ─────────────────────────────────────────────────────────────────────────────────
-Claude API        | ~600B est.  | N/A     | ~10s × 12 segs = 120s| $42
-GPT-4o API        | ~1.7T est.  | N/A     | ~12s × 12 = 144s    | $52
-SimTube           | Claude+GPT4 | N/A     | ~45s (whole video)  | $94
-SimLens (3B+LoRA) | 3B + 200MB  | 6.5GB   | ~15s (12 segs)      | $0 (on-device)
+Claude API        | ~600B est.  | N/A     | ~10s × 12 segs = 120s | $42
+GPT-4o API        | ~1.7T est.  | N/A     | ~12s × 12 = 144s     | $52
+SimTube           | Claude+GPT4 | N/A     | ~45s (whole video)   | $94
+SimLens (3B+LoRA) | 3B + 200MB  | 6.5GB   | ~15s (12 segs)       | $0 (on-device)
                                                                 ─────────────
                                                                 100% saving
 ```
@@ -1017,7 +1047,7 @@ def classify_sentiment(comment, persona):
 per_comment_prompt = """You are a video coaching assistant.
 
 Below is a comment from a specific audience persona watching segment {seg_idx}
-(time {t_start}-{t_end}s) of a 2-minute video.
+(time {t_start}-{t_end}s) of a short-form video.
 
 Persona: {persona_brief}
 Segment content: {segment_text}
@@ -1043,7 +1073,7 @@ def suggest_per_comment(cell):
 ```python
 overall_prompt = """You are a video analytics assistant.
 
-Reaction matrix (12 segments × 8 personas) with sentiments:
+Reaction matrix (N segments × 8 personas) with sentiments:
 {enriched_matrix}
 
 Persona descriptions:
@@ -1152,7 +1182,7 @@ Week 2: 大規模影片素材收集 + 時序對齊 Pipeline
   □ 跑 LLaVA-NeXT 段描述（每 10 秒一段）
   □ UMaT-inspired 時序對齊 → 12 個 enriched segments
   □ 累積敘述生成
-  ★ Milestone 2：100 部影片 × 12 段就緒
+  ★ Milestone 2：100 部短影音 × N 段（avg ~12）就緒
 
 Week 3: Phase 1 蒸餾資料生成
   □ Claude API 對每個 (影片, 段, persona) 生成反應
@@ -1277,7 +1307,7 @@ API 成本：
    - 3.3 Phase 2: 6-aspect Multi-Reward DPO
 
 4. Experiments (2 頁)
-   - 4.1 Setup: 100 videos × 12 segments × 8 personas
+   - 4.1 Setup: 100 short-form videos × avg ~12 segments × 8 personas
    - 4.2 Main results: Table 1（自動指標）
    - 4.3 Segment alignment: Table 2（SimLens 獨有能力）
    - 4.4 Ablation: 8 組 configurations
@@ -1356,7 +1386,10 @@ C3. Empirical Contribution
      用於：Multi-LoRA per persona 技術基礎
 
 [12] Self-Rewarding LM (Yuan et al., 2024) — arXiv 2401.10020
-     用於：Iterative DPO 理論基礎
+     用於：僅借鏡 Iterative DPO 概念（多輪 DPO 持續改善 alignment）
+          SimLens 不採用 self-judge 機制：
+          actor (Llama-3.2-3B) 與 judge (Qwen3-32B) 為不同模型，
+          避免 3B 自評的 self-bias 與能力不足問題
 
 [13] LLM-as-Judge (Zheng et al., 2023) — NeurIPS 2023
      用於：LLM-as-Judge 方法論
@@ -1407,6 +1440,40 @@ C3. Empirical Contribution
      https://arxiv.org/abs/2601.06573
      用於：Section 1.2 決策 B 背書——chunking + late fusion 策略
           在 VideoMME 上比端到端原生多模態模型準確率高 38.75%
+
+[25] Neeko (Yu et al., EMNLP 2024 Main)
+     "Neeko: Leveraging Dynamic LoRA for Efficient Multi-Character Role-Playing Agent"
+     arXiv: 2402.13717
+     https://arxiv.org/abs/2402.13717
+     用於：Multi-LoRA per persona 設計直接前例——
+          證明 per-character LoRA 優於 single LoRA + persona prompt
+          SimLens 延伸：加 RLAIH/DPO 階段、video-grounded segment-level、None abstention
+
+[26] Action-Guided Engagement (arXiv 2025/02)
+     "Can LLMs Simulate Social Media Engagement? A Study on Action-Guided Response Generation"
+     arXiv: 2502.12073
+     https://arxiv.org/abs/2502.12073
+     用於：None-reaction modeling 學術前例——
+          平台層級「ignore」action 已被當作獨立訓練訊號
+          SimLens 將此概念延伸至 persona-internal 層級（觀眾在這段是否會留言）
+
+[27] PEFT Preference Alignment Trade-Offs (Thakkar et al., ACL 2024 Main)
+     "A Deep Dive into the Trade-Offs of Parameter-Efficient Preference Alignment Techniques"
+     arXiv: 2406.04879
+     https://arxiv.org/abs/2406.04879
+     用於：LoRA + DPO 整套技術背書——
+          ACL 2024 Main 系統性 300+ 實驗證明 LoRA-SFT → LoRA-DPO 可行
+          提供 adapter rank sensitivity、收斂行為等具體指引
+          SimLens §3.5 + §4.6 兩階段訓練的權威背書
+
+[28] Multi-MLLM Knowledge Distillation (Gu et al., arXiv 2025/05)
+     "Multi-MLLM Knowledge Distillation for Out-of-Context News Detection"
+     arXiv: 2505.22517
+     https://arxiv.org/abs/2505.22517
+     用於：完整 LoRA SFT + LoRA DPO 兩階段 prior art——
+          直接前例：Stage 1 LoRA SFT + Stage 2 同 LoRA DPO + AI 訊號當 preference
+          在 ~7B 級小模型 + 多教師蒸餾場景達 SOTA（< 10% labeled data）
+          SimLens 擴展為多 LoRA per persona、多面向 reward、開放式生成
 ```
 
 ---
@@ -1435,18 +1502,53 @@ L4. English-Only & Cultural Bias
     8 個 persona 都是英文 + 美國/亞洲文化導向。
     中文 / 跨文化擴展為 future work。
 
-L5. Short Video Constraint
-    限制 2 分鐘影片以節省 token。
-    長影片需要 hierarchical summarization。
+L5. Length-Generalization Constraint
 
-L6. Fixed Segment Length (10 seconds)
-    10 秒切分忽略內容自然邊界（如鏡頭切換、話題轉換）。
-    Adaptive segmentation 為 future work。
+    SimLens scope 鎖定在 short-form video (30s–3min)，10 秒固定分段。
+    這是有意的設計選擇，理由：
+      (a) 對應 TikTok / Reels / YouTube Shorts 三大平台主流長度
+          —— 創作者經濟最大宗的內容形式
+      (b) 訓練資料分布一致（同為短影音範疇），評估指標可比
+      (c) UMaT 結構化分段在此粒度有最強學術背書
+      (d) Cell 總數隨影片長度浮動（avg ~96 cells / video），但訓練資料量
+          可預估（100 影片 × avg 12 段 × 8 persona ≈ 9,600 cells）
+
+    對比：
+      SimTube (Hung et al., 2024) 沒有指定影片長度，也沒做 length ablation
+      —— SimLens 主動界定 scope 是 SimTube 的方法論增量
+
+    未驗證的泛化邊界（保留為 future work）：
+      ✗ < 30 秒（過短）：persona 反應空間可能過於受限
+      ✗ > 5 分鐘（過長）：context length 與訓練成本爆炸
+      ✗ Segment length sweep（5s / 10s / 20s）：本研究使用 UMaT 推薦的 10s
+      ✗ 場景感知分段（PySceneDetect / TextTiling）：未實作
+
+    Future work：
+      F2 Adaptive Segmentation
+      F6 Long-form Video Support
 
 L7. No Verification of Reaction Frequency Ground Truth
     每個 persona 的 reaction_frequency 是我們設定的（如 P1 是 high），
     沒有真實資料驗證這個假設。
     這影響 None reward 的設計。
+
+L8. Two-Stage Pipeline Choice
+    SimLens 採用 SFT + DPO 兩階段，未採用單階段方法（如 ORPO、DPO+NLL）。
+    Trade-off：訓練流程複雜度高（8 LoRA × 2 phase × 2 round = 32 次訓練 run），
+    但保留 SFT/DPO 各自獨立的 ablation slot（A2/A3），是 SimLens 核心 contribution。
+    Future work 可比較 ORPO single-stage 在 3B + persona 領域的表現。
+
+L9. Self-Rewarding 不適用於 SimLens 規模
+    Yuan et al. (2024) 的 Self-Rewarding LM 在 Llama-2-70B 成功，
+    後續 Meta-Rewarding 在 Llama-3-8B 仍能 work。
+    但社群實驗顯示 3B 規模下 self-judging quality 會崩 ——
+    模型太小無法可靠自評（self-rewarding 範式的 known frontier failure）。
+    SimLens 採用 external judge (Qwen3-32B) 正是繞開此限制：
+      - actor (Llama-3.2-3B) 與 judge (Qwen3-32B-Q4) 為不同模型
+      - 「強者評弱者」設計避開 3B 自評的 self-bias 與能力不足
+      - 6-aspect 結構化 reward 需要 external judge + PersonaGym rubric 才好做
+    Future work：當 SimLens base model 升級到 7B+ 時，
+    可探索切到 self-rewarding 範式以省去 external judge。
 ```
 
 ---
@@ -1475,7 +1577,7 @@ F5. Real-time Director Mode
 
 F6. Long-form Video Support
     結合 hierarchical summarization 處理 10+ 分鐘影片
-    目前限制在 2 分鐘以節省 token
+    目前 scope 鎖定 short-form (30s–3min) 以節省 token、確保訓練資料分布一致
 ```
 
 ---

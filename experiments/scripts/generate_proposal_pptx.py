@@ -171,7 +171,7 @@ s = slide_blank(prs)
 add_title_with_redline(s, "Problem Description")
 add_bullets(s, [
     (0, "Can a 3B small model — without real persona-level viewing data —"),
-    (1, "generate persona-specific reactions for each segment of a 2-minute video?"),
+    (1, "generate persona-specific reactions for each segment of a short-form video (30s–3min)?"),
     (0, "Three core challenges:"),
     (1, "C1. Data scarcity: no ground-truth dataset of (segment, persona, comment) tuples exists."),
     (1, "C2. Temporal granularity: model must reason about WHICH segment, not the whole video."),
@@ -186,7 +186,7 @@ add_title_with_redline(s, "Goal")
 add_bullets(s, [
     (0, "Build SimLens — a segment-level persona-conditioned video audience simulator."),
     (0, "Quantitative KPIs:"),
-    (1, "Per video: 12 segments × 8 personas = 96-cell reaction matrix"),
+    (1, "Per video: N segments × 8 personas reaction matrix (avg ~96 cells; N = ⌈duration/10s⌉, typically 3–18)"),
     (1, "(implemented via 8 per-persona LoRA adapters on a shared Llama-3B base — swapped at inference time)."),
     (1, "Latency ≤ 15s on RTX 3090 (vs. ~120s for Claude API)."),
     (1, "Persona Consistency ≥ 0.80 (target: surpass Claude teacher 0.74)."),
@@ -249,7 +249,7 @@ add_bullets(s, [
 ], top=Inches(1.2), base_size=15, indent_size=12)
 tb = s.shapes.add_textbox(Inches(0.4), Inches(6.55), Inches(12.5), Inches(0.4))
 p = tb.text_frame.paragraphs[0]
-p.text = "[3] Yuan et al. Self-Rewarding Language Models. arXiv:2401.10020 (v3, 2025), Meta + NYU."
+p.text = "[5] Yuan et al. Self-Rewarding Language Models. arXiv:2401.10020 (v3, 2025), Meta + NYU."
 p.runs[0].font.size = Pt(10); p.runs[0].font.name = "Times New Roman"; p.runs[0].font.color.rgb = GREY
 add_footer(s, 8)
 
@@ -357,13 +357,18 @@ add_bullets(s, [
     (0, "Pipeline:"),
     (1, "Collect 100 × 2-min YouTube videos → run Stage A → 100 × 12 enriched segments."),
     (1, "For each (video, segment, persona) tuple: prompt Claude with cumulative narrative + current segment + persona YAML."),
-    (1, "Output: a 10–50 word comment OR exactly \"None\" — explicitly modeling no-reaction behavior."),
-    (1, "Total: 9,600 cells → ~4,800 comments + ~4,800 None labels (cost ≈ $115)."),
-    (0, "SFT training: 8 independent LoRA adapters (rank=8) on a shared 4-bit GPTQ Llama-3.2-3B base — one adapter per persona."),
+    (1, "Output: a 10–50 word comment OR exactly \"None\" — explicitly modeling no-reaction behavior [4]."),
+    (1, "Total: ~9,600 cells (estimated, varies with video length) → ~4,800 comments + ~4,800 None labels (cost ≈ $115)."),
+    (0, "SFT training: 8 independent LoRA adapters (rank=8) on a shared 4-bit GPTQ Llama-3.2-3B base — one adapter per persona [3]."),
     (1, "Why per-persona LoRA (not single LoRA + persona prompt)?  Hard separation prevents persona leakage; each adapter specializes on one viewer's distribution.", RED),
     (1, "Each adapter ~25 MB; 8 adapters total ~200 MB. Swapped at inference time on the same frozen base.", None),
-    (0, "Novelty: training on \"None\" labels — teaches the model when a persona stays silent."),
+    (0, "Novelty: extending platform-level \"ignore\" action [4] to persona-internal abstention — when a viewer stays silent on a segment."),
 ], top=Inches(1.1), base_size=15, indent_size=12)
+# refs
+tb = s.shapes.add_textbox(Inches(0.4), Inches(6.55), Inches(12.5), Inches(0.4))
+p = tb.text_frame.paragraphs[0]
+p.text = "[3] Yu et al. Neeko: Dynamic LoRA for Multi-Character Role-Playing. EMNLP 2024.    [4] Action-Guided Engagement, arXiv:2502.12073, 2025."
+p.runs[0].font.size = Pt(9); p.runs[0].font.name = "Times New Roman"; p.runs[0].font.color.rgb = GREY
 add_footer(s, 12)
 
 # Slide 13: Method — Phase 2 RLAIH
@@ -389,16 +394,16 @@ add_footer(s, 13)
 s = slide_blank(prs)
 add_title_with_redline(s, "Experiments — Data & Evaluation Metrics")
 add_bullets(s, [
-    (0, "Data: 100 YouTube short-form videos (~2 min each), 5 categories × 20 videos."),
+    (0, "Data: 100 YouTube short-form videos (30s–3min, avg ~2min), 5 categories × 20 videos."),
     (1, "Vlog / Tech Review / Food / Education / Entertainment; English; ≥ 10K views; official captions."),
-    (1, "9,600 (video × segment × persona) cells; 85/10/5 train/val/test split."),
+    (1, "~9,600 (video × segment × persona) cells (varies with video length); 85/10/5 train/val/test split."),
     (0, "Automatic metrics (Layer 2):"),
     (1, "BERTScore F1, ROUGE-1, Distinct-1/2 (NLG diversity)."),
     (1, "Persona Consistency, Linguistic Habits, Coherence, Engagingness (LLM-as-judge)."),
     (1, "Segment Alignment Accuracy, None Prediction F1 (NEW — SimLens-specific)."),
     (0, "Human evaluation (Layer 1):"),
     (1, "25 annotators × 8 videos × 3 personas; 7-point Likert on Relevance / Believability / Helpfulness."),
-    (1, "Segment-localization quiz: given a generated comment, identify which of 12 segments it belongs to."),
+    (1, "Segment-localization quiz: given a generated comment, identify which of N segments it belongs to."),
     (0, "GPT-4o spot-check (200 samples) — verify local-judge ↔ GPT-4o Spearman ρ > 0.7."),
 ], top=Inches(1.2), base_size=15, indent_size=13)
 add_footer(s, 14)
@@ -493,7 +498,7 @@ add_bullets(s, [
     (1, "SimLens — a 3B segment-level persona-conditioned video audience simulator,"),
     (1, "trained via two-stage Distillation + RLAIH with a novel 6-aspect reward."),
     (0, "What we expect to achieve:"),
-    (1, "C1 (System): first end-to-end pipeline producing a 12 × 8 reaction matrix per 2-min video, runnable on 24GB GPU."),
+    (1, "C1 (System): first end-to-end pipeline producing an N × 8 reaction matrix (avg ~96 cells) for short-form videos, runnable on 24GB GPU."),
     (1, "C2 (Method): demonstrate that distillation + RLAIH with a Segment Relevance reward can match or surpass a 600B-class teacher."),
     (1, "C3 (Empirical): None-reaction modeling — first system explicitly predicting persona silence (target F1 ≥ 0.78)."),
     (0, "Benefits (效益):"),
@@ -509,16 +514,18 @@ add_title_with_redline(s, "References")
 refs = [
     "[1] Hung et al. SimTube: Generating Simulated Video Comments through Multimodal AI. arXiv:2411.09577, 2024.",
     "[2] Bi & Xu. Everything Can Be Described in Words: A Unified Multi-Modal Framework with Semantic and Temporal Alignment (UMaT). arXiv:2503.09081, 2025.",
-    "[3] Yuan et al. Self-Rewarding Language Models. arXiv:2401.10020 (v3, 2025), Meta + NYU.",
-    "[4] Samuel et al. PersonaGym: Evaluating Persona Agents and LLMs. EMNLP 2025 Findings.",
-    "[5] Rafailov et al. Direct Preference Optimization (DPO). NeurIPS 2023.",
-    "[6] Lee et al. RLAIF: Scaling Reinforcement Learning from Human Feedback with AI Feedback. arXiv 2023, Google DeepMind.",
-    "[7] Williams et al. MORLAIF: Multi-Objective Reinforcement Learning from AI Feedback. arXiv:2406.07496, 2024.",
-    "[8] Hu et al. LoRA: Low-Rank Adaptation of Large Language Models. ICLR 2022.",
-    "[9] Liu et al. LLaVA-NeXT: Improved Reasoning, OCR, and World Knowledge, 2024.",
-    "[10] Radford et al. Robust Speech Recognition via Large-Scale Weak Supervision (Whisper). 2022.",
-    "[11] Meta AI. Llama 3.2 Release Notes, 2024.",
-    "[12] Lambert et al. Tülu 3: Pushing the Frontier of Open Language Model Post-Training, 2024.",
+    "[3] Yu et al. Neeko: Leveraging Dynamic LoRA for Efficient Multi-Character Role-Playing Agent. EMNLP 2024 Main.",
+    "[4] Anonymous. Can LLMs Simulate Social Media Engagement? A Study on Action-Guided Response Generation. arXiv:2502.12073, 2025.",
+    "[5] Yuan et al. Self-Rewarding Language Models. arXiv:2401.10020 (v3, 2025), Meta + NYU.",
+    "[6] Samuel et al. PersonaGym: Evaluating Persona Agents and LLMs. EMNLP 2025 Findings.",
+    "[7] Rafailov et al. Direct Preference Optimization (DPO). NeurIPS 2023.",
+    "[8] Lee et al. RLAIF: Scaling Reinforcement Learning from Human Feedback with AI Feedback. arXiv:2309.00267, 2023, Google DeepMind.",
+    "[9] Williams et al. MORLAIF: Multi-Objective Reinforcement Learning from AI Feedback. arXiv:2406.07496, 2024.",
+    "[10] Hu et al. LoRA: Low-Rank Adaptation of Large Language Models. ICLR 2022.",
+    "[11] Liu et al. LLaVA-NeXT: Improved Reasoning, OCR, and World Knowledge, 2024.",
+    "[12] Radford et al. Robust Speech Recognition via Large-Scale Weak Supervision (Whisper), 2022.",
+    "[13] Meta AI. Llama 3.2 Release Notes, 2024.",
+    "[14] Lambert et al. Tülu 3: Pushing the Frontier of Open Language Model Post-Training, 2024.",
 ]
 tb = s.shapes.add_textbox(Inches(0.5), Inches(1.2), Inches(12.3), Inches(5.6))
 tf = tb.text_frame; tf.word_wrap = True

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/kk865/AppData/Local/Temp/**)"
+    ]
+  }
+}

@@ -210,13 +210,26 @@ Phase 2 RLAIH 訓練演算法的核心；ablation 設計範式
 
 **網址**：[https://arxiv.org/abs/2309.00267](https://arxiv.org/abs/2309.00267)
 
-**類型**：RLAIH 方法論基礎
+**類型**：RLAIH 方法論基礎 + d-RLAIF frozen judge 設計依據
 
 **在 SimLens 中的引用用途**：
-證明 RLAIH 可達到甚至超越 RLHF 的同等效果；支持「用 LLM-as-Judge 取代真實人類標註」的論述
+**借鏡兩個論點**：
+- (1) **AI feedback 可達 RLHF 同等效果**（甚至更好，在 label 一致性高的任務上，例如 harmless dialogue generation）。
+- (2) **d-RLAIF 證明 frozen off-the-shelf LLM 可直接當 reward source 取代訓練 reward model**，避開 RM staleness 問題（standard RLAIF 訓練的 RM 隨 policy 更新會逐漸 out-of-distribution）。
+
+**SimLens 的 Qwen-32B judge 設計正是繼承 d-RLAIF 的此精神**：不訓練 judge，直接 zero-shot prompting。
+
+**但 SimLens 用 DPO 取代 REINFORCE**，理由：
+- (a) DPO 對 LoRA 微調支援更好（[30] Thakkar ACL 2024 系統驗證）
+- (b) 24GB 單卡跑不動 REINFORCE 需要的 policy + value + judge 三模型同駐（Lee et al. 用 8× A100 80GB）
+- (c) 我們的 6-aspect 結構化 reward 適合 DPO 的 preference pair 格式，而非 REINFORCE 的純量 reward（d-RLAIF 是 1-10 分純量）
 
 **摘要**：
-Google DeepMind 證明 RLAIF 可達到 RLHF 同等水準甚至更好，特別在 harmless dialogue generation 中超越 RLHF（因為 label definition 更一致）。在 summarization、helpful dialogue 與 harmless dialogue 三大任務上驗證。為 SimLens 用 LLM-as-Judge 取代真實標註的關鍵理論依據。
+Google DeepMind 證明 RLAIF 可達到 RLHF 同等水準甚至更好，特別在 harmless dialogue generation 中超越 RLHF（因為 label definition 更一致）。論文提出兩個變體：
+- **Canonical RLAIF**：LLM 標 preference data → 訓練獨立 Reward Model（PaLM 2 XS，BT loss）→ REINFORCE 更新 policy。RM 在 RL 階段凍結。
+- **d-RLAIF（direct RLAIF）**：跳過訓練 RM，直接用 frozen off-the-shelf LLM（PaLM 2 XS）每步給 1-10 分當 reward。**human eval 上 d-RLAIF 優於 canonical RLAIF**，因 RM 訓練本身會引入 distillation loss、性能上限被 LLM judge 限制。
+
+兩個變體都用 REINFORCE + KL penalty（β=0.05），不是 PPO。Base model 為 PaLM 2 XS。
 
 ---
 
@@ -231,13 +244,17 @@ Google DeepMind 證明 RLAIF 可達到 RLHF 同等水準甚至更好，特別在
 
 **網址**：[https://arxiv.org/abs/2401.10020](https://arxiv.org/abs/2401.10020)
 
-**類型**：迭代訓練方法
+**類型**：Iterative DPO 概念依據（不採用 self-rewarding 機制）
 
 **在 SimLens 中的引用用途**：
-Iterative DPO 的理論基礎；Phase 2 多輪迭代訓練的依據
+**僅借鏡 Iterative DPO 概念**（M1 → M2 → M3 多輪 DPO 可持續改善 alignment quality）。**SimLens 不採用 self-rewarding 機制** —— actor (Llama-3.2-3B) 與 judge (Qwen3-32B-Q4) 為**不同模型**，理由：
+- (1) Llama-3B 太小，同時做 actor + judge 兩件事會兩邊都做不好（Self-Rewarding 用 70B 才可靠）
+- (2) 自評有 self-bias，偏好自己風格的答案
+- (3) Qwen 比 Llama-3B 強，符合「強者評弱者」的 judge 設計準則
+- (4) SimLens 用 6-aspect 結構化 reward，需要 external judge 配合 PersonaGym rubric 才好做
 
 **摘要**：
-Meta 提出 Self-Rewarding LLM 範式，模型在訓練中既當 actor 又當 judge，透過迭代產生 preference pair 自我改善。在 AlpacaEval 上超越 Claude-2、Gemini Pro、GPT-4 0613。已被 ICLR 2025 接收的 implicit reward bootstrapping 工作擴展。為 SimLens Phase 2 round 2 的迭代依據。
+Meta 提出 Self-Rewarding LLM 範式：模型在訓練中既當 actor 又當 judge，透過迭代產生 preference pair 自我改善。Llama-2-70B 在 AlpacaEval 2.0 三輪迭代後達 20.44% win rate（Iter 1: 9.94% → Iter 2: 15.38% → Iter 3: 20.44%），超越 Claude 2、Gemini Pro、GPT-4 0613。**核心發現是 Iterative DPO 對 alignment 持續有效**，這部分結論不需要 self-rewarding 機制也成立 —— SimLens 借鏡此論點作為 Phase 2 round 2 迭代的依據，但用 external judge (Qwen3-32B) 取代 self-judge。
 
 ---
 
@@ -324,6 +341,90 @@ Multi-LoRA per persona 的技術基礎；4-bit 量化 + LoRA rank 8 的標準設
 
 **摘要**：
 提出 LoRA 透過 low-rank 矩陣分解，凍結原模型 weights 只訓練少量 adapter parameters，可在 GPT-3 175B 上將可訓練參數減少 10000 倍、GPU memory 減少 3 倍，且不增加推理延遲。是 SimLens「8 個 persona × 8 個 LoRA adapter」設計的技術基石。
+
+---
+
+### [28] Neeko
+**完整標題**：Neeko: Leveraging Dynamic LoRA for Efficient Multi-Character Role-Playing Agent
+
+**作者**：Yu, Xiaoyan; Luo, Tongxu; Wei, Yifan; Lei, Fangyu; Huang, Yiming; Peng, Hao; Zhu, Liehuang
+
+**發表場域 / 年份**：EMNLP 2024 Main Conference (2024)
+
+**arXiv 編號**：`2402.13717`
+
+**網址**：[https://arxiv.org/abs/2402.13717](https://arxiv.org/abs/2402.13717)
+
+**類型**：Multi-LoRA per persona 設計直接前例
+
+**在 SimLens 中的引用用途**：
+SimLens「8 個 persona × 8 個獨立 LoRA adapter」設計的最直接學術前例；證明 per-character LoRA 優於 single LoRA + persona prompt。回應 reviewer「為什麼不用 single LoRA + prompt 切換 persona」的關鍵防禦。
+
+**摘要**：
+Neeko 用 distinct LoRA blocks per character + dynamic gating 機制建構 multi-character role-playing agent，並提出 incremental learning 階段（fusion / expansion）支援新角色加入。在 multi-character dialogue 任務上顯著優於 single-LoRA + prompt conditioning baseline。SimLens 採用相同的 per-persona LoRA 架構，但延伸至：(1) 加入 RLAIH / DPO 階段（Neeko 只做 SFT）、(2) 處理 video-grounded segment-level 反應而非 free-form character dialogue、(3) 加入 None-reaction abstention 機制。
+
+---
+
+### [29] Action-Guided Engagement Generation
+**完整標題**：Can LLMs Simulate Social Media Engagement? A Study on Action-Guided Response Generation
+
+**作者**：（arXiv preprint 作者群）
+
+**發表場域 / 年份**：arXiv (2025/02)
+
+**arXiv 編號**：`2502.12073`
+
+**網址**：[https://arxiv.org/abs/2502.12073](https://arxiv.org/abs/2502.12073)
+
+**類型**：None-reaction modeling 學術前例
+
+**在 SimLens 中的引用用途**：
+SimLens「None reaction modeling」設計（讓 persona 顯式選擇不留言）的最直接學術前例。回應 reviewer「為什麼把 None 當作獨立訓練訊號」的防禦。
+
+**摘要**：
+提出 two-stage social media simulation pipeline：第一階段預測使用者 engagement action（retweet / quote / rewrite / **ignore**），第二階段在條件 action 下生成對應回應。在 GPT-4o-mini、o1-mini、DeepSeek-R1 上 benchmark。**「ignore」這個顯式 action 直接對應 SimLens 的「None」反應**，證明在 social engagement simulation 領域已有「不互動也是一種訊號」的學術共識。SimLens 將此概念從平台層級（retweet / ignore）延伸至 persona-internal 層級（這位觀眾在這段是否會留言）。
+
+---
+
+### [30] PEFT Preference Alignment Trade-Offs (Thakkar et al.)
+**完整標題**：A Deep Dive into the Trade-Offs of Parameter-Efficient Preference Alignment Techniques
+
+**作者**：Thakkar, Megh; Fournier, Quentin; Riemer, Matthew; Chen, Pin-Yu; Zouaq, Amal; Das, Payel; Chandar, Sarath
+
+**發表場域 / 年份**：ACL 2024 Main Conference (2024)
+
+**arXiv 編號**：`2406.04879`
+
+**網址**：[https://arxiv.org/abs/2406.04879](https://arxiv.org/abs/2406.04879)
+
+**類型**：LoRA + DPO 整套技術背書
+
+**在 SimLens 中的引用用途**：
+SimLens 整套訓練範式（4-bit + LoRA rank 8 + SFT + DPO）的最直接技術背書。回應 reviewer「LoRA 上接 DPO 會不會有問題」的核心防禦。
+
+**摘要**：
+ACL 2024 Main 系統性 300+ 實驗組合，在 LLaMA-1、Vicuna-v1.3、Mistral-7B、Mistral-7B-Instruct 上系統比較 LoRA / QLoRA SFT 後接 LoRA / QLoRA DPO 的多種 trade-offs。提供 adapter rank sensitivity、data informativeness、收斂行為等具體指引。直接證明「LoRA SFT → 同 LoRA DPO」是可行範式，是 SimLens 兩階段訓練的權威背書。SimLens 在此之上擴展為 (1) 多 LoRA per persona、(2) AI judge 取代 human preferences、(3) 多面向 reward。
+
+---
+
+### [31] Multi-MLLM Knowledge Distillation
+**完整標題**：Multi-MLLM Knowledge Distillation for Out-of-Context News Detection
+
+**作者**：Gu, Yimeng; Tong, Yi; Castro, Ignacio; Wu, Shu; Tyson, Gareth
+
+**發表場域 / 年份**：arXiv (2025/05)
+
+**arXiv 編號**：`2505.22517`
+
+**網址**：[https://arxiv.org/abs/2505.22517](https://arxiv.org/abs/2505.22517)
+
+**類型**：完整 LoRA SFT + LoRA DPO 兩階段 prior art
+
+**在 SimLens 中的引用用途**：
+SimLens Phase 1 + Phase 2 兩階段訓練流程的最直接前例。證明「LoRA SFT + LoRA DPO + AI 訊號當 preference」可在 ~7B 級小模型 + 多教師蒸餾場景下達到 SOTA。
+
+**摘要**：
+在 OOC（out-of-context）news detection 任務上，提出兩階段訓練 pipeline：Stage 1 用全部資料做 LoRA SFT；Stage 2 在多個 MLLM teacher 判斷不一致的資料點上做 LoRA DPO（同一個 adapter 繼續訓練）。teacher 不一致即作為 preference signal。在 < 10% labeled data 條件下達 SOTA，明確證明「LoRA SFT → 同 LoRA DPO」+ AI 訊號驅動的 preference 在多教師蒸餾場景可行。SimLens 將此範式擴展為：(1) 多 LoRA per persona（非 single LoRA），(2) 多面向 6-aspect reward（非 single disagreement signal），(3) 開放式生成（非 binary classification）。
 
 ---
 
@@ -608,3 +709,7 @@ Section 1.2 決策 B 背書——SimLens 為何要將影片分段而非整段處
 | [25](#25-llm-sentiment-on-social-media) | LLM Sentiment on Social Media | JMIR / PMC (peer-reviewed) | 情感分類數據背書 |
 | [26](#26-videomultiagents) | VideoMultiAgents | arXiv | 設計決策背書 |
 | [27](#27-qmavis) | QMAVIS | arXiv | 設計決策背書 |
+| [28](#28-neeko) | Neeko | EMNLP 2024 Main | Multi-LoRA per persona 直接前例 |
+| [29](#29-action-guided-engagement-generation) | Action-Guided Engagement | arXiv (2025/02) | None-reaction modeling 直接前例 |
+| [30](#30-peft-preference-alignment-trade-offs-thakkar-et-al) | PEFT Preference Alignment Trade-Offs | ACL 2024 Main | LoRA + DPO 整套技術背書 |
+| [31](#31-multi-mllm-knowledge-distillation) | Multi-MLLM Knowledge Distillation | arXiv (2025/05) | Phase 1+2 兩階段 prior art |
