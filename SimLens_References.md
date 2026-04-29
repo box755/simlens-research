@@ -1,6 +1,6 @@
 # SimLens 研究計畫引用文獻清單
-> 共 27 篇引用文獻，涵蓋系統架構、訓練方法、評估指標、設計決策背書等面向
-> 對應研究計畫：SimLens_Research_Plan_v2.md
+> 共 40 篇引用文獻，涵蓋系統架構、訓練方法、評估指標、設計決策背書、事件驅動稀疏預測、結構化輸出評估、外部錨點驗證等面向
+> 對應研究計畫：SimLens_Research_Plan_v4.1.md（v4.1 新增 [32]–[40] 共 9 篇）
 
 ---
 
@@ -678,6 +678,211 @@ Section 1.2 決策 B 背書——SimLens 為何要將影片分段而非整段處
 
 ---
 
+## I. 事件驅動稀疏時序預測（v4.1 新增）
+
+### [32] VTG-LLM
+**完整標題**：VTG-LLM: Integrating Timestamp Knowledge into Video LLMs for Enhanced Video Temporal Grounding
+
+**作者**：Guo, Yongxin; Liu, Jingyu; Li, Mingda; Cheng, Dingxin; Tang, Xiaoying; Sui, Dianbo; Liu, Qingbin; Chen, Xi; Zhao, Kevin
+
+**發表場域 / 年份**：AAAI 2025 (2024 提交，2025 發表)
+
+**arXiv 編號**：`2405.13382`
+
+**網址**：[https://arxiv.org/abs/2405.13382](https://arxiv.org/abs/2405.13382)
+
+**GitHub**：[https://github.com/gyxxyg/VTG-LLM](https://github.com/gyxxyg/VTG-LLM)
+
+**類型**：v4.1 核心架構直接前例（one-shot timeline → sparse JSON）
+
+**在 SimLens v4.1 中的引用用途**：
+SimLens v4.1「一次餵入全片 Timeline Script → 輸出 sparse JSON 含多個 timestamp」設計的最直接學術前例。VTG-LLM 證明把 timestamp 當 token 學是可行的範式（在 Charades-STA / QVHighlights / Youcook2 上達 SOTA），SimLens v4.1 將其延伸至 persona-conditioned commentary generation。Section 1.3 決策 C、Section 3.5 Phase 1、Section 4.6 Reward A (R_timing)、Section 5.5 Temporal F1 / mAP 評估範式皆引用。
+
+**摘要**：
+Video Temporal Grounding (VTG) 旨在用語言查詢精確定位影片事件時間戳。VTG-LLM 提出三項貢獻：(1) 將 timestamp 知識整合進視覺 token；(2) 引入 absolute-time tokens 避免概念漂移；(3) 提出輕量級 slot-based token compression 支援更多影格採樣。同時釋出 VTG-IT-120K 指令微調資料集（含 moment retrieval 63.2K、dense video captioning 37.2K、video summarization 15.2K、highlight detection 3.9K）。在多個 VTG benchmark 上達 SOTA。
+
+---
+
+### [33] MMDuet (VideoLLM Knows When to Speak)
+**完整標題**：VideoLLM Knows When to Speak: Enhancing Time-Sensitive Video Comprehension with Video-Text Duet Interaction Format
+
+**作者**：Wang, Yueqian; Meng, Xiaojun; Wang, Yuxuan; Liang, Jianxin; Wei, Jiansheng; Zhang, Huishuai; Zhao, Dongyan
+
+**發表場域 / 年份**：arXiv preprint (2024)
+
+**arXiv 編號**：`2411.17991`
+
+**網址**：[https://arxiv.org/abs/2411.17991](https://arxiv.org/abs/2411.17991)
+
+**GitHub**：[https://github.com/yellow-binary-tree/MMDuet](https://github.com/yellow-binary-tree/MMDuet)
+
+**類型**：事件驅動稀疏預測直接前例
+
+**在 SimLens v4.1 中的引用用途**：
+SimLens v4.1「event-driven sparse prediction」設計的學術前例。MMDuet 證明 VideoLLM 可以自主決定「何時該說話」（在影片播放中的哪個位置插入文字回應），這正是 SimLens 期望 persona LoRA 學會的能力。Section 1.3 決策 C、Section 3.5 Phase 1 sparse temporal prediction 段落引用。
+
+**摘要**：
+提出 video-text duet interaction format：影片連續播放，user 與 model 都可在任何 timestamp 插入文字訊息（如二重唱輪流）。MMDuet 透過 informative head + relevance head 判斷是否該對某 frame 產生回應。在 YouCook2 dense captioning 達 76% CIDEr、QVHighlights 達 90% mAP、Charades-STA temporal grounding 達 25% R@0.5。同時釋出 MMDuetIT 訓練資料集與 MAGQA (Multi-Answer Grounded VQA) benchmark。
+
+---
+
+### [34] MM-When2Speak (Beyond Words)
+**完整標題**：Beyond Words: Multimodal LLM Knows When to Speak
+
+**作者**：Liao, Zikai; Ouyang, Yi; Lee, Yi-Lun; Yu, Chen-Ping; Tsai, Yi-Hsuan; Yin, Zhaozheng
+
+**發表場域 / 年份**：arXiv preprint (2025)
+
+**arXiv 編號**：`2505.14654`
+
+**網址**：[https://arxiv.org/abs/2505.14654](https://arxiv.org/abs/2505.14654)
+
+**類型**：多模態「何時說話」判斷補充背書
+
+**在 SimLens v4.1 中的引用用途**：
+SimLens v4.1 sparse 觸發預測在多模態場景的補充學術前例。MM-When2Speak 強調 short reactive utterances 依賴跨 vision/audio/text 的細微訊號，與 SimLens persona 對影片爆點的選擇性反應行為一致。Section 3.5 Phase 1 multimodal "when to speak" 背書。
+
+**摘要**：
+針對 LLM-based chatbot 在「何時說話」上的短板（特別是即時、簡短反應），提出 MM-When2Speak 模型，預測 response type 並強調短反應依賴 vision、audio、text 多模態訊號。屬於「event-driven prediction」概念在多模態 conversational agent 場景的延伸。
+
+---
+
+## J. 結構化輸出評估（v4.1 新增）
+
+### [35] IFEval
+**完整標題**：Instruction-Following Evaluation for Large Language Models
+
+**作者**：Zhou, Jeffrey; Lu, Tianjian; Mishra, Swaroop; Brahma, Siddhartha; Basu, Sujoy; Luan, Yi; Zhou, Denny; Hou, Le
+
+**發表場域 / 年份**：arXiv preprint, Google (2023)
+
+**arXiv 編號**：`2311.07911`
+
+**網址**：[https://arxiv.org/abs/2311.07911](https://arxiv.org/abs/2311.07911)
+
+**Hugging Face**：[https://huggingface.co/datasets/google/IFEval](https://huggingface.co/datasets/google/IFEval)
+
+**類型**：v4.1 Format Compliance 評估方法論
+
+**在 SimLens v4.1 中的引用用途**：
+SimLens v4.1 Group 0 Format Compliance Rate (FCR) 評估方法論的核心依據。IFEval 提出「verifiable instructions」概念（可被程式客觀驗證的指令），SimLens 借鏡此哲學定義 JSON Parsing Rate / Schema Compliance Rate / Timestamp Format Rate / Timestamp Legality Rate 等規則式評估指標。Section 5.2 Group 0、Section 5.5 評估學術依據引用。
+
+**摘要**：
+Google 提出 IFEval：一個易於重現的 instruction-following 評估 benchmark。聚焦於「可驗證指令」（verifiable instructions），如「字數 > 400」「至少提到關鍵字 AI 三次」等可被程式客觀檢查的條件。識別出 25 種可驗證指令類型，建構約 500 prompts。解決「人工評估昂貴慢、LLM-as-Judge 有偏誤」的雙重痛點。是後續所有結構化輸出評估的方法論起點。
+
+---
+
+### [36] JSONSchemaBench
+**完整標題**：JSONSchemaBench: A Rigorous Benchmark of Structured Outputs for Language Models
+
+**作者**：Geng, Saibo; Cooper, Hudson; Moskal, Michał; Jenkins, Samuel; Berman, Julian; Ranchin, Nathan; West, Robert; Horvitz, Eric; Nori, Harsha
+
+**發表場域 / 年份**：arXiv preprint, EPFL + Microsoft Research (2025)
+
+**arXiv 編號**：`2501.10868`
+
+**網址**：[https://arxiv.org/abs/2501.10868](https://arxiv.org/abs/2501.10868)
+
+**GitHub**：[https://github.com/guidance-ai/jsonschemabench](https://github.com/guidance-ai/jsonschemabench)
+
+**類型**：v4.1 constrained JSON decoding 技術背書
+
+**在 SimLens v4.1 中的引用用途**：
+SimLens v4.1 採用 constrained decoding（Outlines / XGrammar）強制輸出合法 JSON 的技術背書。JSONSchemaBench 系統性評估六大 constrained decoding 框架（Guidance, Outlines, Llamacpp, XGrammar, OpenAI, Gemini），提供 SimLens 選型依據。Section 3.3 SFT 訓練 constrained decoding、Section 5.2 Group 0 JSON-specific 評估方法引用。
+
+**摘要**：
+提出 JSONSchemaBench：包含 10K 真實 JSON schema 的 constrained decoding benchmark，涵蓋多元複雜度約束。配合官方 JSON Schema Test Suite 評估六種 SOTA constrained decoding 框架。提出三維度評估：efficiency（生成合規輸出的效率）、coverage（涵蓋約束類型的廣度）、quality（生成輸出的品質）。發現 constrained decoding 可比 unconstrained 加速 50%，但 Outlines 因 schema 編譯逾時 compliance 最低。
+
+---
+
+### [37] StructEval
+**完整標題**：StructEval: Benchmarking LLMs' Capabilities to Generate Structural Outputs
+
+**作者**：Yang, Jialin; Jiang, Dongfu; He, Lipeng; Siu, Sherman; Zhang, Yuxuan; Liao, Disen; Li, Zhuofeng; Zeng, Huaye; Jia, Yiming; Wang, Haozhe; Schneider, Benjamin; Ruan, Chi; Ma, Wentao; Lyu, Zhiheng; Wang, Yifei; Lu, Yi; Do, Quy Duc; Jiang, Ziyan; Nie, Ping; Chen, Wenhu
+
+**發表場域 / 年份**：TMLR 2025 (2025)
+
+**arXiv 編號**：`2505.20139`
+
+**網址**：[https://arxiv.org/abs/2505.20139](https://arxiv.org/abs/2505.20139)
+
+**GitHub**：[https://github.com/TIGER-AI-Lab/StructEval](https://github.com/TIGER-AI-Lab/StructEval)
+
+**類型**：v4.1 結構化輸出評估補充背書
+
+**在 SimLens v4.1 中的引用用途**：
+SimLens v4.1 Group 0 Format Compliance Rate 評估方法論的補充背書。StructEval 涵蓋 18 種結構化格式與 44 類任務，是目前最廣的結構化輸出評估 benchmark。Section 5.2 Group 0、Section 5.5 評估學術依據引用。
+
+**摘要**：
+TIGER-AI-Lab 提出 StructEval：跨 non-renderable（JSON, YAML, CSV）與 renderable（HTML, React, SVG）兩類結構化格式的綜合評估 benchmark。涵蓋 18 種格式、44 類任務。雙評估典範：(1) generation tasks（從自然語言 prompt 產生結構化輸出）、(2) conversion tasks（在結構化格式間轉換）。提出新穎的 format adherence 與 structural correctness 指標。
+
+---
+
+## K. 時序定位與外部錨點驗證（v4.1 新增）
+
+### [38] SoccerNet
+**完整標題**：SoccerNet: A Scalable Dataset for Action Spotting in Soccer Videos
+
+**作者**：Giancola, Silvio; Amine, Mohieddine; Dghaily, Tarek; Ghanem, Bernard
+
+**發表場域 / 年份**：CVPR 2018 Workshops (KAUST) (2018)
+
+**arXiv 編號**：`1804.04527`
+
+**網址**：[https://arxiv.org/abs/1804.04527](https://arxiv.org/abs/1804.04527)
+
+**Project Page**：[https://www.soccer-net.org/](https://www.soccer-net.org/)
+
+**類型**：v4.1 時序定位評估範式來源
+
+**在 SimLens v4.1 中的引用用途**：
+SimLens v4.1 Tier 1 時序定位評估指標 Temporal F1@5s / Average-mAP@[1,3,5,10]s 的方法論來源。SoccerNet 建立了「tolerance window 內算 true positive」的 action spotting 評估範式，後續被 VTG-LLM 等 video temporal grounding 工作沿用。Section 5.2 Group 1、Section 4.3 Reward A (R_timing) 引用。
+
+**摘要**：
+KAUST 團隊提出 SoccerNet：含 500 場完整足球比賽（764 小時）的大規模 action spotting 資料集。建立 mAP-based 評估範式（loose tolerance 5–60s、tight tolerance 1–5s），定義「候選 timestamp 落在 ground truth ±θ 秒內算 true positive」的 tolerance-based evaluation paradigm。後續 SoccerNet-v2 擴展到 17 類 action、SoccerNet 2024/2025 Challenges 加入 ball action spotting、player tracking 等新任務。是 sports video understanding 與 video temporal localization 領域的奠基性工作。
+
+---
+
+### [39] VideoIC
+**完整標題**：VideoIC: A Video Interactive Comments Dataset and Multimodal Multitask Learning for Comments Generation
+
+**作者**：Wang, Weiying; Chen, Jieting; Jin, Qin
+
+**發表場域 / 年份**：ACM MM 2020 (Renmin University of China) (2020)
+
+**DOI**：[10.1145/3394171.3413890](https://dl.acm.org/doi/10.1145/3394171.3413890)
+
+**GitHub**：[https://github.com/AIM3-RUC/VideoIC](https://github.com/AIM3-RUC/VideoIC)
+
+**類型**：v4.1 Bilibili 彈幕外部弱錨點資料集
+
+**在 SimLens v4.1 中的引用用途**：
+SimLens v4.1 Group 5 外部錨點驗證的核心資料集。VideoIC 含 4,951 部 Bilibili 影片、5M 彈幕（avg 1077/影片），彈幕具精準秒級時間戳，可用於計算「群體爆點時刻」。SimLens 用其驗證 Peak Overlap Rate（SimLens 8 personas 合併 timestamps 與真實彈幕密度峰值的 ±3s 重合率）。注意：此驗證僅作為「群體爆點識別」的弱錨點，不對應個人 persona 行為（v4.1 已誠實 framing）。Section 5.2 Group 5、Section 5.5 引用。
+
+**摘要**：
+Renmin University of China 團隊提出 VideoIC：首個大規模 Bilibili 彈幕資料集，含 4,951 部影片、557 小時、5M 彈幕。同時提出 MML-CG（Multimodal Multitask Learning for Comments Generation）模型，整合多模態進行彈幕生成與 temporal relation prediction。是後續所有 live video comment generation 與 danmaku-based highlight detection 工作的基礎資料集。
+
+---
+
+### [40] DanMaKu Highlights (He & Tang)
+**完整標題**：Recommending highlights in Anime movies: Mining the real-time user comments "DanMaKu"
+
+**作者**：He, Yu; Tang, Tiffany Y.
+
+**發表場域 / 年份**：IEEE IntelliSys 2017 (London, UK), IEEE Xplore 2018 (2017)
+
+**DOI**：[https://ieeexplore.ieee.org/document/8324311](https://ieeexplore.ieee.org/document/8324311)
+
+**類型**：彈幕密度峰值識別 highlight 的方法背書
+
+**在 SimLens v4.1 中的引用用途**：
+SimLens v4.1 Group 5 用「彈幕密度峰值」識別影片爆點的方法依據。He & Tang 證明在 9 部日本動畫電影上，DanMaKu 計數峰值能可靠對應影片高潮時刻與關鍵句子。Section 5.2 Group 5、Section 5.5 引用。
+
+**摘要**：
+分析 9 部日本動畫電影的 DanMaKu（彈幕）資料，發現彈幕計數峰值能對應影片高潮時刻（highlight moments）與關鍵句子（key sentences）。提出基於彈幕密度的影片摘要與 highlight 推薦方法。是後續所有「用彈幕識別影片爆點」研究的早期奠基性工作之一。
+
+---
+
 ## 附錄：快速索引（按編號）
 
 | 編號 | 簡稱 | 發表場域 | 用途分類 |
@@ -713,3 +918,12 @@ Section 1.2 決策 B 背書——SimLens 為何要將影片分段而非整段處
 | [29](#29-action-guided-engagement-generation) | Action-Guided Engagement | arXiv (2025/02) | None-reaction modeling 直接前例 |
 | [30](#30-peft-preference-alignment-trade-offs-thakkar-et-al) | PEFT Preference Alignment Trade-Offs | ACL 2024 Main | LoRA + DPO 整套技術背書 |
 | [31](#31-multi-mllm-knowledge-distillation) | Multi-MLLM Knowledge Distillation | arXiv (2025/05) | Phase 1+2 兩階段 prior art |
+| [32](#32-vtg-llm) | VTG-LLM | AAAI 2025 | v4.1 one-shot timeline → sparse JSON 直接前例 |
+| [33](#33-mmduet-videollm-knows-when-to-speak) | MMDuet | arXiv (2024/11) | event-driven sparse prediction 直接前例 |
+| [34](#34-mm-when2speak-beyond-words) | MM-When2Speak | arXiv (2025/05) | 多模態「何時說話」補充背書 |
+| [35](#35-ifeval) | IFEval | arXiv, Google (2023) | v4.1 Format Compliance 評估方法論 |
+| [36](#36-jsonschemabench) | JSONSchemaBench | arXiv, EPFL+MSR (2025) | constrained JSON decoding 技術背書 |
+| [37](#37-structeval) | StructEval | TMLR 2025 | 結構化輸出評估補充背書 |
+| [38](#38-soccernet) | SoccerNet | CVPR 2018 Workshops | Temporal F1 / mAP 評估範式來源 |
+| [39](#39-videoic) | VideoIC | ACM MM 2020 | Bilibili 彈幕外部弱錨點資料集 |
+| [40](#40-danmaku-highlights-he--tang) | DanMaKu Highlights | IEEE IntelliSys 2017 | 彈幕密度峰值識別 highlight 方法背書 |
