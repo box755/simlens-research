@@ -1,10 +1,8 @@
-# SimLens 完整研究計畫 v4.1
+﻿# SimLens 完整研究計畫 v4.1
 ## "Event-Driven Persona-Conditioned Video **Commentary Generation** via Sparse Temporal Prediction and RLAIF"
 
 > 版本：v4.1（Post-hoc Reflection 版本）
 > 投稿目標：ACM MM 2026 BNI / UIST 2026 Posters / Demos / 智慧創新大賞 2026
-> 上一版：v2.0（cumulative segment-by-segment 版本，已棄用）
-> v4.0（事件驅動但仍 cumulative）→ v4.1（一次餵入 + 大方承認 post-hoc）
 
 ---
 
@@ -17,11 +15,11 @@
    生成系統？
    （Scope: 1–3 minute YouTube videos，刻意排除 ≤60s Shorts —— 詳見 §1.4 scope rationale）
 
-關鍵 framing 校正（v4.0 → v4.1）：
-   ✗ 不再 claim「模擬即時觀影體驗」
-   ✓ 重新定位為「事後反思型 AI 評論生成」（post-hoc commentary generation）
+關鍵 framing：
+   ✓ 定位為「事後反思型 AI 評論生成」（post-hoc commentary generation）
    ✓ 此定位與 SimTube、YouTube 真實留言情境一致
        —— 觀眾本來就是「看完整片才寫評論」
+   ✗ 不 claim「模擬即時觀影體驗」
 
 核心方法：
    Stage A：UMaT-inspired temporal alignment
@@ -35,13 +33,15 @@
    Stage C：報告生成（同一個 Llama-3B base）
      - 從 (timestamp, comment) 列表整合出跨受眾比較與改善建議
 
-關鍵差異化（vs SimTube vs v4.0）：
-   SimTube：影片 → 整體理解 → 1 條整片評論 / persona
-   SimLens v2.0（廢棄）：12 段 × 8 persona × cumulative call → 96 次 API call / 影片
-   SimLens v4.1：1 次全片輸入 → 8 條 Sparse JSON list → 8 次 API call / 影片
-                 每 persona 輸出 [(t1, c1), (t2, c2), ...]，N_comments 由 persona 自決
+關鍵差異化（vs SimTube）：
+   SimTube：影片 → 整體理解 → per persona 1 條【整片評論，無 timestamp】
+            （內部用 timestamp 對齊輸入模態，但摘要成 video summary 後丟掉時間軸）
+   SimLens：影片 timeline (含 timestamp) → per persona N 條【sparse comments + timestamp】
+            → 輸出 [(t1, c1), (t2, c2), ...]，N 由 persona 活躍度自決
    
-   Token 成本下降約 90%、架構更簡潔、且符合真實 YouTube 留言行為情境。
+   核心差異：SimTube 的 LLM 輸出捨棄時間軸；SimLens 的 LLM 輸出保留時間軸。
+   對創作者實用價值差一個量級 —— 從「整體分數」變成「段落級回饋」。
+   架構簡潔（per video × persona 1 次推理）、且符合真實 YouTube 留言行為情境。
 
 預期貢獻：
    C1. System：首個 segment-localized persona-conditioned 影片評論生成系統
@@ -115,26 +115,24 @@
 └──────────────────────────────────────────────────────┘
 ```
 
-### 1.1 v2.0 → v4.1 架構對比
+### 1.1 架構特徵摘要
 
-| 維度 | v2.0（廢棄）| **v4.1（新版）**|
+| 維度 | SimLens 設計 | 說明 |
 |---|---|---|
-| 輸入方式 | 每段 cumulative 餵入 | **一次餵入全片 Timeline Script** |
-| 推理單位 | (segment_i, persona_p) cell | **(video, persona_p) sparse list** |
-| API call 次數 / 影片 | 12 段 × 8 persona = 96 | **1 × 8 persona = 8** |
-| 輸出格式 | 每段一個 comment 或 "None" | **稀疏 JSON [(t, c), ...]** |
-| "None" 處理 | 顯式 None 標籤 | **隱式（不出現該 timestamp）**|
-| Token 成本 | 高（每段重餵 cumulative）| **約原 1/10** |
-| 模擬聲稱 | 即時觀影反應（有破口）| **事後反思評論（誠實）** |
+| 輸入方式 | 一次餵入全片 Timeline Script | UMaT-style structured text |
+| 推理單位 | (video, persona) → 1 條 sparse list | 每 persona 對整片 1 次推理 |
+| 輸出格式 | 稀疏 JSON `[{timestamp, comment}, ...]` | Chapter-Llama 範式（text-level timestamp output） |
+| 「沒反應」編碼 | 不出現該 timestamp / 空陣列 | 自然嵌入輸出格式 |
+| 模擬定位 | **事後反思評論**（post-hoc commentary）| 與 YouTube 真實留言情境一致 |
 
 ### 1.2 架構設計依據
 
 | 設計元素 | 來源文獻 | 為什麼這樣選 |
 |---------|---------|-------------|
 | Whisper-Large-v3 + LLaVA-NeXT | SimTube (Hung et al., 2024) | 直接借鏡 SimTube multimodal pipeline |
-| **時序對齊 + 結構化文字** | **UMaT (Bi & Xu, 2025, arXiv 2503.09081)** | 將視覺與聽覺輸入統一為結構化文字 |
-| 10 秒等長分段 | UMaT structured segmentation | 固定段長度避免 fragmentation |
-| **One-shot timeline → sparse JSON** | **VTG-LLM (AAAI 2025, arXiv 2405.13382)** | 把 timestamp 當 token 學的範式直接前例 |
+| 10 秒等長分段策略 | **UMaT (Bi & Xu, 2025, arXiv 2503.09081)** | structured segmentation 細節依據（fixed-length avoid fragmentation）|
+| **All-modality-as-text 哲學** | **Socratic Models (Zeng et al., ICLR 2023, arXiv 2204.00598)** | 將視覺 / 音訊全部降維為文字（"language-based world-state history"），讓 LLM 純在文字域推理 |
+| **One-shot timeline → text-output timestamp** | **Chapter-Llama (Ventura et al., CVPR 2025, arXiv 2504.00072)** | LoRA-tuned LLM 從 ASR + caption + timestamp 文字 timeline 輸出 timestamp + 內容的最直接前例 |
 | **Event-driven sparse prediction** | **MMDuet (arXiv 2411.17991), MM-When2Speak (arXiv 2505.14654)** | "VideoLLM Knows When to Speak"——本研究在 post-hoc 場景的延伸 |
 | **事後反思 framing** | **YouTube comment 真實情境 + post-hoc commentary 定位** | 觀眾本來就是看完才留言，不需偽裝即時性 |
 | Llama-3.2-3B 為 student | Meta Llama 3.2 release notes (2024) | 1B 太弱、8B 太大，3B 是甜蜜點 |
@@ -150,41 +148,65 @@
 **潛在質疑**：「為什麼不把整部短 YouTube 影片直接餵給 Gemini 2.5 Flash 或 GPT-4o 一次到位？」
 
 **學術背書 1：感知與推理分離有可解釋性與可除錯性優勢**
+- **Socratic Models (Zeng et al., ICLR 2023, arXiv 2204.00598)** 提出「all-modality-as-text」哲學：將視覺/音訊全部降維為「language-based world-state history」，讓 LLM 純在文字域推理 —— 提供 interpretability 與 modular composition 能力。
 - **VideoMultiAgents (Kugo et al., arXiv 2504.20091)** 在 Intent-QA 達 79.0%（+6.2% over SOTA），證明專門代理人 + 獨立文字報告能避免單一巨型模型的黑箱干擾。
-- **UMaT (Bi & Xu, arXiv 2503.09081)** 主張將視覺與聽覺降維為「統一文字表示」，提供 interpretability 與 structured retrieval 能力。
 
 **學術背書 2：原生多模態模型的時序理解仍有缺陷**
 - **VBenchComp / Time Blindness 系列**：頂尖原生多模態模型（GPT-4o、Gemini）對影片存在「shuffling invariance」——影格打亂順序，輸出仍幾乎不變，顯示依賴語言先驗而非真實時序推理。
 
 #### 決策 B：為什麼將影片分段（每 10 秒）？
 
-**學術背書 1：分段是時間軸對齊的最穩健方式**
-- **UMaT (Bi & Xu, 2025)** 明確指出，要在影片任務中維持語義與時間一致性，必須將視覺描述與 ASR 轉錄「依時間戳切分為結構化片段」。
+**學術背書 1：等長分段策略的細節依據**
+- **UMaT (Bi & Xu, arXiv 2503.09081)** 明確指出，要在影片任務中維持語義與時間一致性，必須將視覺描述與 ASR 轉錄「依時間戳切分為結構化片段」；且採用 **fixed-length** 分段可避免 fragmentation。SimLens 採用 10s 等長分段直接借鏡此策略。
+- 註：**Chapter-Llama (CVPR 2025)** 採用 ASR-guided 動態 frame selection（非等長），SimLens 為簡化實作與保證每段都有文字 + 視覺輸入，選擇等長分段路線。
 
 **學術背書 2：分段能規避視覺模型的記憶體與品質下降問題**
 - **QMAVIS (Lin et al., arXiv 2601.06573)** 證明 chunking + late fusion 在 VideoMME 長影片基準上比端到端原生多模態模型**準確率高 38.75%**。
 
-#### 決策 C ⭐：為什麼採用「一次餵入 + 事後反思」而非「逐段 cumulative」？
+#### 決策 C ⭐：為什麼採用「一次餵入 + 事後反思」？
 
-**潛在質疑**：「Cumulative 才能模擬即時觀影體驗，一次餵入會 future leakage 啊？」
+**潛在質疑**：「為什麼不模擬即時觀影體驗，逐段累積決定反應？」
 
 **學術背書 1：Post-hoc commentary 是更誠實的學術定位**
 - 真實 YouTube 留言**本就是看完整片才寫**——觀眾並非邊看邊即時打字。事後反思 framing 與真實留言情境一致。
 - SimTube (Hung et al., 2024) 本身也是事後對整片給評論，學界接受此 framing。
-- 若用 cumulative 假裝即時，反而引入「假裝有時序資訊」的破口；reviewer 會問：「你怎麼證明 cumulative 反應跟真實即時行為一致？」（你沒這個資料集）。
-- 大方承認 post-hoc，反而 scope 乾淨、無破口。
+- 大方承認 post-hoc，scope 乾淨、無 future leakage 破口。
 
-**學術背書 2：Sparse temporal prediction 已有頂會直接前例**
-- **VTG-LLM (AAAI 2025, arXiv 2405.13382)**：把 timestamp 當 token 學，要求模型一次輸出多個時間點。SimLens 的 sparse JSON 正是此範式 + commentary generation。
-- **MMDuet (arXiv 2411.17991)**：「VideoLLM Knows When to Speak」，事件驅動稀疏預測。
-- **MM-When2Speak (arXiv 2505.14654)**：多模態 LLM 判斷何時說話。
+**學術背書 2：Text-level video-to-timestamp 範式有 CVPR 2025 直接前例**
 
-**學術背書 3：成本與工程效率**
-- v2.0 cumulative 設計：96 cells × Claude API call = ~$1.20/影片
-- v4.1 one-shot 設計：8 calls × Claude API call = ~$0.10/影片
-- **成本下降 ~90%**，可釋放預算給更多影片或更多 persona。
+SimLens 採用 **text-level path（影片轉文字 timeline → LLM 推理輸出 timestamp）**，
+而非 **token-level path（修改 VLM 在視覺 token 加入 timestamp）**。
+這兩條路線的代表工作對比如下：
 
-**對 SimLens 的意義**：v4.1 不是「為了省錢的退讓」，而是「**移除 v2.0 即時性偽裝後的更誠實架構**」。Reviewer 會欣賞這種誠實 framing。
+| 路線 | 代表工作 | 機制 | SimLens 採用？ |
+|---|---|---|---|
+| **A. Token-level**：修改 VLM 視覺 encoder | VTG-LLM (AAAI 2025) | 影格 → 加 absolute-time token → VLM 內建時間理解 | ✗ |
+| **B. Text-level**：影片轉文字 → LLM 推理 | **Chapter-Llama (CVPR 2025)**、Socratic Models (ICLR 2023)、UMaT (2025)、SimLens | 影片 → ASR + caption + timestamp 文字 → LLM 輸出 timestamp + 內容 | ✓ |
+
+**為什麼 SimLens 選路線 B**：
+- **Chapter-Llama (CVPR 2025, arXiv 2504.00072)** 是與 SimLens **機制最一致**的直接前例：
+  Llama-3.1-8B + LoRA rank=8，輸入 `ASR [HH:MM:SS]: ...` + `Caption [HH:MM:SS]: ...`
+  按 timestamp 排序的純文字 timeline，輸出 timestamp + 章節標題。
+  在 VidChapters-7M 上 F1 從 26.7（VTG-style baseline）大幅提升至 **45.3**。
+  **SimLens 採用同樣 pipeline，差別只在輸出內容（chapter title → persona commentary）**
+  與 base model size（8B → 3B + per-persona LoRA）。
+- **Socratic Models (Zeng et al., ICLR 2023, arXiv 2204.00598)** 提供哲學基礎：
+  將所有模態（視覺 / 音訊）降維為「**language-based world-state history**」，
+  讓 LLM 純在文字域推理 —— 是 SimLens Stage A Timeline Script 設計的祖師爺工作。
+- **MMDuet (arXiv 2411.17991)** / **MM-When2Speak (arXiv 2505.14654)**：
+  支援「event-driven sparse prediction」概念，但實作偏 streaming / token-level，
+  作為 sparse output 概念的補充背書。
+- **路線 A（VTG-LLM 等）需要訓練 / 修改 VLM 本身**，成本高、需 8B+ multimodal 模型，
+  不適合 SimLens 的 24GB 消費級 GPU 部署目標。
+
+**學術背書 3：工程效率**
+- One-shot 設計：每 (video, persona) 1 次 Claude API call ≈ ~$0.015/call
+- 100 影片 × 8 persona = 800 calls，總 ~$12 USD —— 在學生研究預算內。
+- Chapter-Llama 在 1 hr 影片做到 single forward pass，SimLens 應用到 1–3 min 短影片是合理範圍縮減。
+
+**對 SimLens 的意義**：post-hoc + one-shot + text-level sparse JSON 是建立在
+Chapter-Llama (CVPR 2025) 與 Socratic Models (ICLR 2023) 等成熟工作上的範式延伸，
+不偽裝即時性、不需修改 VLM 架構、scope 乾淨、reviewer 攻擊面最小。
 
 ### 1.4 Scope Rationale：為什麼是 1–3 分鐘 YouTube 影片，而不是 Shorts？
 
@@ -199,10 +221,11 @@
 - LLaVA-NeXT 對 60s 整段直接處理仍在能力範圍內，**UMaT/QMAVIS 引用的「長影片需分段」motivation 站不穩**
 - 60s 內 sparse JSON 平均只有 1–3 個 timestamp，sparse 與 dense 預測差別不顯著
 
-**理由 2：Persona 區分能力需要足夠時間軸**
-- 8 個 persona 的差異化主要體現在「**對哪些段反應、對哪些段不反應**」的 timestamp 集合差異
-- 60s 內全部 persona 可能都集中反應在同一個爆點，**Persona Differentiation (Jaccard) 指標失效**
-- 1–3min 對應 6–18 段，足以展現 8 個 persona 在時間軸上的真實差異
+**理由 2：Persona 區分能力需要足夠 sparse list 長度**
+- 8 個 persona 的差異化主要體現在「**反應內容風格**」（口頭禪、情緒、視角）
+- 60s 內 sparse list 平均只有 1–3 條評論，內容樣本太少難以展現 persona 風格特徵
+- 1–3min 對應每 persona 平均 0–7 條 sparse list，足以累積 persona-specific 內容差異
+- Persona Content Distinctiveness (Group 3) 在足夠樣本下才能穩定區分 8 個 persona
 
 **理由 3：與 SimTube baseline 對標基準明確**
 - SimTube (Hung et al., 2024) 實驗用的影片長度雖未嚴格限定，但實際分布偏向 1–10min 中短片
@@ -210,9 +233,9 @@
 - 純 Shorts 場景下 SimTube 沒有對應實驗，跨域比較會失準
 
 **理由 4：訓練資料與 reward 設計連動匹配**
-- Persona expected_comment_count 以 2min 影片為 baseline（如 P1 high → 3-6 條 / 2min）
+- Persona expected_comment_count 以 2min 影片為 baseline（高活躍 persona 約 3-6 條 / 2min）
 - R_frequency_match 與 R_coverage_diversity 都依賴「足夠長的時間軸來展開」
-- 30s 影片若強要 P1 留 3 條評論 = 每 10s 一條，**違反真實留言行為分布**
+- 30s 影片若強要高活躍 persona 留 3 條評論 = 每 10s 一條，**違反真實留言行為分布**
 
 #### 為什麼不做 > 3min？
 
@@ -234,110 +257,130 @@
 
 ---
 
-## 2. Persona 設計（不需要任何資料）
+## 2. Persona 設計（從 PersonaChat 8K 取樣，不手動設計）
 
-### 2.1 為什麼選 8 個 persona
+### 2.1 設計哲學：不重新造輪子
+
+**SimLens 完全照搬 SimTube (IUI 2025) 的 PersonaChat-based persona selection 範式，**
+**唯一延伸是「top-30 → top-8」與「per-video query → dataset-aggregated query」。**
+
+為什麼採用：
+- **PersonaChat (Zhang et al., ACL 2018)** 提供 8000+ 人工撰寫 persona descriptions，學界引用 4000+ 次，是 persona-based dialogue 的事實標準資料集
+- **SimTube (Hung et al., IUI 2025)** 已驗證「PersonaChat + cosine similarity 取樣」能產生高品質、與影片內容相關的 personas
+- **我們不發明新的 persona 集合**，避免「為什麼是這 8 個？」的 reviewer 質疑
+- **完全可重現**：給定影片資料集 + embedding 模型 + random seed，任何人都能複製出同樣 8 個 personas
+
+### 2.2 為什麼選 8 個 persona
 
 ```
-理論依據：
-1. PersonaChat (ACL 2018)：8K personas，但 SimTube 實驗時只用 top-30
-2. PersonaGym (EMNLP 2025)：200 personas 評估，每任務只用 5 個
-3. SimTube (2024)：crowd-sourced study 用 8 部不同類型影片
-
-對 SimLens 的數量決策：
-- 太少（<5）：persona 多樣性不足
-- 太多（>15）：每 persona 訓練資料稀釋
-- 8 個是甜蜜點：每 persona 約 100-150 部影片的 sparse list，
-                平均每部 0-5 條評論（隨 persona 活躍度浮動）
+數量決策：
+- SimTube 用 top-30，但他們不訓練模型（純 prompting）
+- SimLens 要訓 per-persona LoRA：30 個 LoRA × 100 樣本 = 訓練資料過稀
+- PersonaGym (EMNLP 2025) 評估實驗每任務只用 5 個 personas，多樣性可能不足
+  （註：PersonaGym 自帶 200 personas，但 SimLens 不使用其 personas，
+   只借用其評估 rubric — 詳見 §4.3 / §5.2）
+- 8 個是甜蜜點：每 persona 100 個 sparse list 樣本（足夠 LoRA 訓練）
+              + 8 維度涵蓋主流受眾類型
+              + Neeko (EMNLP 2024) 多角色實驗範圍 (3-10) 內
 ```
 
-### 2.2 8 個 SimLens Persona Schema
+### 2.3 Persona 取樣流程（PersonaChat → top-8）
 
-採用 PersonaGym 標準六層描述（Demographics + Interests + Personality + Viewing Habits + Linguistic Style + Engagement Pattern），新增 **expected_comment_count** 欄位以對應 sparse JSON 輸出：
+```python
+# Step 1: 載入 PersonaChat
+from datasets import load_dataset
+personachat = load_dataset("bavard/personachat_truecased")
+all_personas = personachat["train"]["personality"]   # 8K+ persona descriptions
+                                                      # 每個 persona = 5 句以上自我描述
 
-#### **P1: 18-24 大學女性（社群活躍型）**
-```yaml
-demographics: {age: 18-24, gender: female, occupation: university student, location: urban Asia}
-interests: [K-beauty, fashion trends, travel vlogs, K-pop, lifestyle]
-personality: extroverted, trend-conscious, peer-influenced
-viewing_habits: {length: 5-15min, platforms: [Instagram, TikTok, YouTube Shorts], engagement: heavy}
-linguistic_style: {tone: enthusiastic, phrases: [OMG, love this, so cute, obsessed], emoji: very high}
-expected_comment_count: high (3-6 條 / 2min 影片，活躍型)
+# Step 2: 對 100 部影片提取 keywords + 聚合
+import openai
+video_keywords = []
+for video in videos_100:
+    # 從 video 的 LLaVA caption + Whisper transcript 用 GPT-4o 摘出 5-10 個 keywords
+    kws = extract_keywords(video.timeline_script)
+    video_keywords.extend(kws)
+dataset_query = " ".join(set(video_keywords))   # aggregated query 涵蓋整批訓練影片
+
+# Step 3: 用 OpenAI text-embedding-3-small 嵌入（同 SimTube 設定）
+client = openai.OpenAI()
+def embed(text):
+    return client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    ).data[0].embedding
+
+query_emb = embed(dataset_query)
+persona_embs = [embed(p) for p in all_personas]
+
+# Step 4: cosine similarity → top-K with diversity filter
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+sims = cosine_similarity([query_emb], persona_embs)[0]
+
+# top-N 候選（取 N=80），再以 MMR 過濾出 8 個多樣 personas
+top_n_idx = np.argsort(sims)[-80:][::-1]
+selected = mmr_diversity_filter(top_n_idx, persona_embs, k=8, lambda_=0.6)
+                                             # MMR: Maximal Marginal Relevance
+                                             # lambda_=0.6 平衡相關性 vs 多樣性
+
+PERSONAS = [all_personas[i] for i in selected]
+                                             # 8 個 PersonaChat-format personas
+
+# Step 5: 為每個 persona 補上 expected_comment_count（唯一手動補欄位）
+# 由 Claude zero-shot 估計（基於 persona 描述推斷活躍度）
+for p in PERSONAS:
+    p["expected_comment_count_range"] = claude_estimate_activity(p)
+                                             # e.g., (0, 2) for introvert
+                                             #       (3, 6) for extrovert
 ```
 
-#### **P2: 25-34 上班族男性（科技分析型）**
-```yaml
-demographics: {age: 25-34, gender: male, occupation: tech professional, location: urban}
-interests: [tech reviews, gadgets, finance, productivity tools]
-personality: analytical, skeptical, data-driven
-viewing_habits: {length: 10-20min, platforms: [YouTube, Twitter/X], engagement: rare but substantive}
-linguistic_style: {tone: measured, phrases: [actually, IMO, the real question is], emoji: minimal}
-expected_comment_count: low (0-2 條 / 2min 影片，潛水型)
+### 2.4 與 SimTube 範式的兩個延伸（SimLens-specific）
+
+| 維度 | SimTube (IUI 2025) | SimLens (本研究) | 為什麼延伸 |
+|---|---|---|---|
+| **取樣數量** | top-30 personas | **top-8 personas + MMR** | per-persona LoRA 需要每 persona 充足訓練資料 |
+| **Query 範圍** | 單部影片的 keywords | **整批 100 部影片 aggregated keywords** | 全資料集需共用同 8 個 personas，不能每片切換 |
+| **Persona 內容** | PersonaChat 原文不動 | **PersonaChat 原文 + expected_comment_count** | 對應 sparse list 長度的活躍度編碼 |
+
+### 2.5 Persona 範例（從 PersonaChat 8K 抽樣後預期長相）
+
+> 實際 8 個 personas 在 Week 1 跑完取樣腳本後產生。以下為 PersonaChat 原始格式範例（非手選結果）：
+
+```
+範例 Persona（PersonaChat 原始格式）：
+  "i am a youtuber. i make videos about makeup.
+   i have a pet cat named whiskers.
+   i love drinking iced coffee in the morning.
+   i go to the gym three times a week."
+
+  + (SimLens 補) expected_comment_count_range: (3, 5)
 ```
 
-#### **P3: 25-34 上班族女性（職涯導向型）**
-```yaml
-demographics: {age: 25-34, gender: female, occupation: marketing/consulting, location: urban}
-interests: [career development, work-life balance, finance, premium travel]
-personality: goal-oriented, aesthetically aware, time-conscious
-linguistic_style: {tone: polished, phrases: [great insight, takeaway, totally relatable], emoji: low-moderate}
-expected_comment_count: medium (1-3 條 / 2min 影片)
-```
+每個 persona 都是 PersonaChat 中真實人撰寫的 5 句以上自我描述，**內容由資料集決定，不是我們編的**。
 
-#### **P4: 35-44 已婚父母（家庭實用型）**
-```yaml
-demographics: {age: 35-44, gender: any, occupation: parent + employed, location: suburban}
-interests: [parenting, family travel, home improvement, finance, wellness]
-personality: practical, value-focused, time-constrained
-linguistic_style: {tone: warm, phrases: [as a parent, my kids, this reminds me], emoji: moderate}
-expected_comment_count: medium (1-3 條 / 2min 影片)
-```
-
-#### **P5: 45-54 中年男性（傳統權威型）**
-```yaml
-demographics: {age: 45-54, gender: male, occupation: established professional, location: any}
-interests: [news, investment, traditional hobbies, documentaries]
-personality: opinionated, traditional, authority-respecting
-linguistic_style: {tone: authoritative, phrases: [back in my day, the real issue is, frankly], emoji: very low}
-expected_comment_count: low (0-1 條 / 2min 影片，最潛水型)
-```
-
-#### **P6: 18-24 大學男性（遊戲動漫宅）**
-```yaml
-demographics: {age: 18-24, gender: male, occupation: student/entry-level, location: any}
-interests: [gaming, esports, anime, meme culture]
-personality: playful, ironic, peer-influenced
-linguistic_style: {tone: ironic, phrases: [based, W, L, no cap, fr, this slaps], emoji: moderate ironic}
-expected_comment_count: high (3-5 條 / 2min 影片，迷因型)
-```
-
-#### **P7: 55+ 退休族群（懷舊溫暖型）**
-```yaml
-demographics: {age: 55+, gender: any, occupation: retired/semi-retired, location: any}
-interests: [health, leisurely travel, traditional cooking, philosophy/religion]
-personality: reflective, nostalgic, warmth-valuing
-linguistic_style: {tone: warm, phrases: [thank you for sharing, brings back memories, blessed], emoji: low-moderate}
-expected_comment_count: medium-low (1-2 條 / 2min 影片)
-```
-
-#### **P8: 13-17 青少年（潮流迷因型）**
-```yaml
-demographics: {age: 13-17, gender: any, occupation: middle/high school student, location: any}
-interests: [viral content, memes, gaming, music/dance, school life]
-personality: peer-conscious, trend-driven, expressive
-linguistic_style: {tone: high energy, phrases: [LMAO, fr fr, no way, that's so me], emoji: very high}
-expected_comment_count: very high (4-7 條 / 2min 影片，但短)
-```
-
-### 2.3 Persona 設計學術依據
+### 2.6 Persona 設計學術依據
 
 | 設計元素 | 引用文獻 | 借鏡之處 |
 |---------|---------|---------|
-| 六層 schema 結構 | PersonaGym (Samuel et al., EMNLP 2025) | demographics + linguistic habits + behavior |
-| Demographics 細節 | PersonaChat (Zhang et al., ACL 2018) | occupation + location + interests |
-| Linguistic style 設計 | Bias-Adjusted LLM Agents (Kitadai et al., arXiv 2508.18600) | individual-level 行為差異化 |
-| Viewing habits 加入 | SimTube (Hung et al., 2024) | 影片觀眾模擬特有元素 |
-| **expected_comment_count** | **本研究新增** | **取代 v2.0 的 reaction_frequency，直接編碼 sparse list 長度** |
+| **PersonaChat 8K 為來源** | **PersonaChat (Zhang et al., ACL 2018)** | 8000+ 標準 personas, 學界事實標準 |
+| **Cosine similarity 取樣** | **SimTube (Hung et al., IUI 2025)** | 直接照搬其 PersonaChat → top-K 範式 |
+| **OpenAI text-embedding-3-small** | **SimTube (Hung et al., IUI 2025)** | 同款 embedding 模型，可重現 |
+| **MMR 多樣性過濾** | Carbonell & Goldstein (SIGIR 1998) | 經典 diversity-aware selection 演算法 |
+| **8 personas (vs SimTube 30)** | Neeko (EMNLP 2024) | per-character LoRA 場景 3-10 個是合理範圍 |
+| **expected_comment_count** | **本研究新增** | 直接編碼 sparse list 長度，避免顯式 None 標籤需求 |
+
+### 2.7 Reviewer 預期質疑與回應
+
+**Q: 「為什麼是這 8 個 personas？」**
+A: 不是我們選的，是 PersonaChat top-8 by cosine similarity + MMR 程式抽樣。給定資料集 + random seed，任何人都能完全重現。
+
+**Q: 「PersonaChat 是 2018 年資料，會不會過時？」**
+A: SimTube (IUI 2025) 仍採用此資料集並達 SOTA。Persona descriptions 中的人格特質（外向 / 內向 / 興趣）與年代無關。
+
+**Q: 「8 個夠涵蓋多元受眾嗎？」**
+A: MMR 過濾保證 8 個 persona 在嵌入空間最大化多樣性。若 reviewer 要求，可在 ablation 加跑 top-16 對比。
+
 
 ---
 
@@ -388,7 +431,7 @@ Step 1.2: UMaT-inspired 時序對齊 → 全局 Timeline Script
               生成段視覺描述（~150 字）
    
    (c) 時序對齊 → 全局 Timeline Script（v4.1 關鍵改變）
-       不再產生 cumulative narrative。直接產生整片可一次餵入的劇本：
+       直接產生整片可一次餵入的 Timeline Script：
        
        === Timeline Script ===
        [00:00-00:10] Visual: <LLaVA 段描述>
@@ -400,13 +443,13 @@ Step 1.2: UMaT-inspired 時序對齊 → 全局 Timeline Script
                      Audio: ...
        === End ===
        
-   產出：100 個影片 × 1 個 Timeline Script per video（不再是 12 個 cumulative）
+   產出：100 個影片 × 1 個 Timeline Script per video
 
 ═══════════════════════════════════════════════════════
 Step 1.3: Claude 蒸餾資料生成（核心 v4.1 改變）
 ═══════════════════════════════════════════════════════
    
-   對每個 (影片 V, persona P)：    ← 注意：不再對每段獨立呼叫
+   對每個 (影片 V, persona P)：
      一次餵入 V 的 Timeline Script + persona P
      讓 Claude 輸出 sparse JSON list
      
@@ -421,9 +464,10 @@ Step 1.3: Claude 蒸餾資料生成（核心 v4.1 改變）
    │ {timeline_script}                                           │
    │                                                             │
    │ Reflect on the entire video. List the moments where you     │
-   │ would have left a comment, given your persona's:            │
-   │ - Expected comment count: {persona.expected_comment_count}  │
-   │ - Linguistic style: {persona.linguistic_style}              │
+   │ would have left a comment, staying in character with the    │
+   │ persona description above. Match your persona's expected    │
+   │ comment count: {persona.expected_comment_count_range}       │
+   │ (e.g., "low" personas may comment 0-2 times, "high" 3-6).   │
    │                                                             │
    │ Output ONLY a valid JSON array in this exact format:        │
    │ [                                                           │
@@ -445,19 +489,18 @@ Step 1.3: Claude 蒸餾資料生成（核心 v4.1 改變）
      平均每 list 包含 0-7 條評論（依 persona 活躍度）
      預估總評論數：~3,200 條（avg ~4 條 per (video, persona) pair）
      
-   為什麼此設計優於 v2.0：
+   為什麼採用此設計：
      (1) "無反應" 自然編碼為「不出現該 timestamp」，無需 None 標籤
      (2) Persona 的活躍度直接由 list 長度體現，更貼近真實行為
-     (3) Sparse JSON 是 VTG-LLM (AAAI 2025) 已驗證的格式
-     (4) Token 成本：800 calls vs v2.0 的 9,600 calls，下降 ~92%
-     (5) 大方承認 post-hoc，無 future leakage 破口
+     (3) Text-level timestamp 輸出已被 Chapter-Llama (CVPR 2025) 在 1 hr 影片驗證可行
+     (4) 成本可控：800 calls × $0.015 ≈ $12 USD
+     (5) Post-hoc 定位無 future leakage 破口
    
    成本估算：
      Timeline Script avg ~2200 tokens (in) + persona ~200 tokens (in)
      Output avg ~500 tokens
      Per call: ~$0.015
      Total: 800 calls × $0.015 = $12 USD
-     （比 v2.0 的 $115 USD 下降 ~90%）
 ```
 
 ### 3.3 SFT 訓練設定（蒸餾階段）
@@ -473,14 +516,14 @@ config = {
     "lora_dropout": 0.05,
     
     "training": {
-        "epochs": 3,                  # v2.0 是 2，因為樣本變少需多 epoch
+        "epochs": 3,                  # 樣本數 800 較少，需多 epoch 收斂
         "batch_size": 2,              # 序列變長（整片 timeline）
         "gradient_accumulation": 8,
         "learning_rate": 2e-4,
         "warmup_ratio": 0.1,
         "weight_decay": 0.01,
         "lr_scheduler": "cosine",
-        "max_seq_length": 4096        # v2.0 是 2048，整片 timeline 需更長
+        "max_seq_length": 4096        # 整片 Timeline Script 加 persona 約需 3000+ tokens
     },
     
     "data": {
@@ -548,15 +591,16 @@ def generate_sparse_comments(video, persona_id):
 | Knowledge distillation 為起點 | DistilBERT (Sanh et al., 2019)、Tülu 3 (Lambert et al., 2024) | SFT on synthetic data |
 | Claude as teacher | OpenCharacter (arXiv 2501.15427) | 大模型蒸餾 role-playing 行為 |
 | Synthetic persona data | PersonaLLM (Jiang et al., 2024) | 合成 persona dialog 訓練 |
-| **時序對齊 Timeline Script** | **UMaT (Bi & Xu, arXiv 2503.09081)** | structured text representation |
-| **One-shot timeline → sparse JSON** | **VTG-LLM (AAAI 2025, arXiv 2405.13382)** | timestamp 當 token 學的直接前例 |
-| **Sparse temporal prediction** | **MMDuet (arXiv 2411.17991)** | 「VideoLLM Knows When to Speak」 |
+| **10 秒等長分段策略** | **UMaT (Bi & Xu, arXiv 2503.09081)** | fixed-length structured segmentation 細節依據 |
+| **All-modality-as-text 哲學** | **Socratic Models (Zeng et al., ICLR 2023, arXiv 2204.00598)** | 將視覺/音訊統一降維為 language-based world-state history，是 SimLens Stage A Timeline Script 的祖師爺工作 |
+| **One-shot timeline → text-output timestamp** | **Chapter-Llama (Ventura et al., CVPR 2025, arXiv 2504.00072)** | Llama-3.1-8B + LoRA rank=8，輸入「ASR [HH:MM:SS] / Caption [HH:MM:SS]」按時間排序的純文字 timeline，輸出 timestamp + 內容；機制與 SimLens 99% 一致 |
+| **Sparse temporal prediction（補充背書）** | **MMDuet (arXiv 2411.17991)、MM-When2Speak (arXiv 2505.14654)** | 「VideoLLM Knows When to Speak」事件驅動稀疏輸出概念背書 |
 | LoRA per persona | **Neeko (EMNLP 2024, arXiv 2402.13717)** | per-character LoRA 已被證明優於 single LoRA + prompt |
 | 4-bit GPTQ + LoRA rank 8 | LLaMA-Factory 官方文件、Thakkar et al. (ACL 2024) | 標準 PEFT 工作流 |
 | **LoRA SFT 後續可接 DPO** | **Thakkar et al. (ACL 2024, arXiv 2406.04879)** | 300+ 實驗證明 LoRA-SFT → LoRA-DPO 範式可行 |
 | **兩階段 (SFT + DPO) on LoRA** | **Multi-MLLM Distillation (Gu et al., arXiv 2505.22517)** | 直接前例 |
-| **Constrained JSON decoding** | **JSONSchemaBench (arXiv 2501.10868)、StructEval (arXiv 2505.20139)** | 確保 sparse list 輸出格式合規 |
-| **「沒反應」隱式編碼為空陣列** | 本研究新增（受 VTG-LLM 啟發）| 取代 v2.0 顯式 None 標籤 |
+| **Constrained JSON decoding** | **JSONSchemaBench (arXiv 2501.10868)** | 確保 sparse list 輸出格式合規 |
+| **「沒反應」隱式編碼為空陣列** | 本研究新增（受 Chapter-Llama 啟發）| 避免顯式 None 標籤需求；Chapter-Llama 也用此方式：無 chapter boundary 時 LLM 不輸出對應 timestamp |
 
 ---
 
@@ -593,8 +637,8 @@ Step 2.2: 4-aspect Multi-Reward 評分
            + 0.25 × R_content_quality      (每條評論的 persona-aligned 內容品質)
            + 0.20 × R_coverage_diversity   (list 內 timestamp 的覆蓋多樣性)
    
-   ⚠ 注意：v2.0 的 6 reward 重新整併為 v4.1 的 4 reward，
-          因為輸出單位從「單條評論」變成「sparse list」，需要 list-level reward。
+   ⚠ 注意：因為輸出單位是「sparse list」（不是單條評論），
+          所有 reward 設計為 list-level（對整條 list 評分）。
 
 ═══════════════════════════════════════════════════════
 Step 2.3: Preference Pair 構造
@@ -632,7 +676,7 @@ def reward_timing(sparse_list, timeline_script):
     """
     對 list 中每個 timestamp 判斷：該時點是否真的有「值得反應的事件」
     
-    來源：VTG-LLM (AAAI 2025)、SoccerNet action spotting paradigm
+    來源：SoccerNet (CVPR 2018) action spotting saliency 概念
     """
     if not sparse_list:
         # 空陣列：判斷「整片是否真的沒高潮」
@@ -671,7 +715,7 @@ Output ONLY the integer.
 ```python
 def reward_frequency_match(sparse_list, persona_yaml, video_duration):
     """
-    本研究新增：取代 v2.0 的 None handling，用 list 長度匹配 persona 活躍度
+    本研究新增：用 list 長度匹配 persona 活躍度，自然編碼「該不該留言」
     
     依據：persona expected_comment_count + 真實 YouTube 留言分布觀察
     """
@@ -697,10 +741,10 @@ def reward_frequency_match(sparse_list, persona_yaml, video_duration):
         return max(0, 1 - 0.3 * excess)
 ```
 
-**為什麼此設計優於 v2.0 的 None handling**：
-- v2.0：每段強迫模型決定「該不該留言」，需顯式 None 標籤
-- v4.1：「沒反應」 = list 短 / 空，自然編碼進輸出格式
+**為什麼此設計優於顯式 None 標籤**：
+- 「沒反應」自然編碼為 list 短 / 空，無需額外標籤
 - 不會出現「模型學到濫輸出 None」這種 reward hacking
+- 與 Chapter-Llama (CVPR 2025) 的 text-output sparse timestamp 範式一致
 
 #### Reward C: Content Quality（每條評論的 persona-aligned 內容品質）— 25%
 
@@ -758,7 +802,7 @@ def reward_coverage_diversity(sparse_list, video_duration):
     
     例：P1 對一個 2min 影片留 4 條，但全在 0:10-0:15 這 5 秒內 → 不自然
     
-    依據：UMaT temporal alignment + 真實彈幕/留言分布觀察
+    依據：UMaT temporal alignment + 真實 YouTube 留言分布觀察
     """
     if len(sparse_list) <= 1:
         return 1.0  # 0 或 1 條時不適用，給滿分
@@ -778,38 +822,17 @@ def reward_coverage_diversity(sparse_list, video_duration):
     return max(0, 1 - deviation / video_duration)
 ```
 
-### 4.4 LLM-as-Judge 防偏誤策略
+### 4.4 LLM-as-Judge 設定
 
 ```python
-def robust_llm_judge(sparse_list, persona, aspect):
+def llm_judge(sparse_list, persona, aspect):
     """
-    Multi-Judge Ensemble
-    依據：Judging the Judges (Krishna et al., 2024)
-    """
-    judges = [
-        ("qwen3:32b-q4_K_M", 0.5),  # 主 judge
-        ("gemma2:27b", 0.3),         # 備 judge  
-        ("llama3.1:70b-q3", 0.2)    # 仲裁（如硬體允許）
-    ]
-    
-    weighted_score = sum(
-        weight * call_judge(model, sparse_list, persona, aspect)
-        for model, weight in judges
-    )
-    return weighted_score
+    使用單一 Qwen3-32B-Q4 作為 frozen judge。
 
-
-def gpt4_spotcheck():
+    依據：RLAIF (Lee et al., 2023) d-RLAIF — frozen off-the-shelf LLM
+         直接給 reward 比訓練 reward model 更穩，避開 RM staleness。
     """
-    從 800 × 4 = 3,200 candidate lists 隨機抽 200 樣本，
-    用 GPT-4 重新評分，計算 Spearman ρ
-    
-    成本：200 × $0.005 ≈ $1 USD
-    """
-    samples = random.sample(all_evaluations, 200)
-    gpt4_scores = [call_gpt4(s) for s in samples]
-    local_scores = [s.local_score for s in samples]
-    return spearman_correlation(gpt4_scores, local_scores)
+    return call_judge("qwen3:32b-q4_K_M", sparse_list, persona, aspect)
 ```
 
 ### 4.5 DPO 訓練設定
@@ -847,14 +870,13 @@ dpo_config = {
 | **DPO 取代 REINFORCE / PPO** | DPO (Rafailov et al., NeurIPS 2023) | 對 LoRA 微調更友善、24GB 單卡跑得動 |
 | **DPO on LoRA adapter** | **Thakkar et al. (ACL 2024)、Multi-MLLM Distillation (arXiv 2505.22517)** | 「LoRA SFT → 同 LoRA DPO」直接前例 |
 | Multi-aspect reward | MORLAIF (Williams, arXiv 2406.07496) | 多目標 reward 比單一更穩 |
-| **List-level reward (4 aspects)** | **本研究新增** | v2.0 cell-level → v4.1 list-level，配合 sparse 輸出格式 |
-| **R_timing (event saliency)** | **VTG-LLM (AAAI 2025)、SoccerNet 評估範式** | 借鏡 action spotting 的時點顯著性概念 |
-| **R_frequency_match** | **本研究新增** | 取代 v2.0 None handling，更自然 |
+| **List-level reward (4 aspects)** | **本研究新增** | 配合 sparse 輸出格式，對整條 list 評分而非單條評論 |
+| **R_timing (event saliency)** | **SoccerNet (CVPR 2018) action spotting paradigm** | 借鏡「tolerance window 內算 true positive」的時點顯著性概念 |
+| **R_frequency_match** | **本研究新增** | 用 list 長度自然編碼活躍度，免顯式 None 標籤 |
 | **R_coverage_diversity** | **本研究新增** | 避免 list 內 timestamp 擠堆 |
 | 本地 LLM-as-Judge | "Replacing the Judge" (SambaNova, 2024) | Llama-3.1 70B ≈ GPT-4 Turbo |
 | **AI 訊號驅動的 preference data** | **Multi-MLLM Distillation (Gu et al., 2025/05)** | teacher 不一致即作為 preference signal |
 | Iterative DPO | Bootstrapping with Implicit Rewards (ICLR 2025) | 多輪迭代提升 alignment |
-| Multi-judge ensemble | Judging the Judges (Krishna et al., 2024) | ensemble 比單一 judge 可靠 |
 
 ---
 
@@ -870,54 +892,43 @@ dpo_config = {
 | **Llama-3.2-3B zero-shot** (one-shot sparse JSON) | 未訓練起點 | 證明訓練有效性 |
 | **Llama-3.2-3B + Phase 1 only (SFT)** | 蒸餾 ablation | 證明 RLAIF 必要 |
 | **Llama-3.2-3B + Phase 2 only (DPO from zero-shot)** | RLAIF ablation | 證明蒸餾必要 |
-| **SimLens v2.0 (cumulative segment-level)** | **架構 ablation** | **證明 v4.1 one-shot 設計優於 v2.0 cumulative** |
-| **Llama-3.2-3B + SimLens v4.1 (full)** | **本研究方法** | 完整 SimLens v4.1 |
+| **Llama-3.2-3B + SimLens (full)** | **本研究方法** | 完整 SimLens |
 
 ### 5.2 評估指標（四層架構）
 
-#### Group 0: Format Compliance（基礎前提）⭐ v4.1 新增
+#### Group 0: Format Compliance（基礎前提）
 
 ```python
-# 因為輸出是結構化 JSON，必須先驗證合規率
-# 依據：IFEval (Zhou et al., 2023)、JSONSchemaBench (arXiv 2501.10868)、
-#      StructEval (arXiv 2505.20139)
+# 因為輸出是結構化 JSON 含時序約束，必須先驗證合規率
+# 設計依據：
+#   - IFEval (Zhou et al., 2023) 的 verifiable instruction 哲學
+#   - JSONSchemaBench (Geng et al., 2025) 的 compliance rate 評估範式
+# 設計原則：所有指標皆為 deterministic（程式可驗證），不需 LLM judge
 
 format_metrics = {
-    "JPR (JSON Parsing Rate)":
-        "輸出能被 json.loads() 無誤解析的比例（預期 >= 95%）",
     "SCR (Schema Compliance Rate)":
-        "解析後資料符合 {timestamp, comment} schema 的比例",
-    "TFR (Timestamp Format Rate)":
-        "timestamp 字串符合 'MM:SS' 格式且落在影片實際長度內的比例",
-    "TLR (Timestamp Legality Rate)":
-        "timestamp 不重複、按時間順序排列的比例"
+        # 通用 JSON 合規維度（對標 JSONSchemaBench compliance rate）
+        # 兼含：能被 json.loads() 解析 + 符合 {timestamp: 'MM:SS', comment: str} schema
+        "輸出能被解析、且符合預期 JSON schema 的比例（預期 >= 95%）",
+    
+    "TVR (Timestamp Validity Rate)":
+        # SimLens 任務特化維度（對應 sparse temporal prediction 的時序約束）
+        # 對通過 SCR 的輸出再驗證 timestamp 合理性：
+        #   (a) 'MM:SS' 格式正確
+        #   (b) 落在影片實際長度內
+        #   (c) 不重複且按時序排列
+        "timestamps 同時滿足格式 + 範圍內 + 不重複 + 排序的比例"
 }
 
+# Composite FCR = min(SCR, TVR)（兩者都通過才算合規）
+
 # 預期效益：
-# - Llama-3B zero-shot: ~30-50% FCR
+# - Llama-3B zero-shot: ~30-40% FCR
 # - SimLens Phase 1 (SFT): ~95%+ FCR
 # - 證明蒸餾賦予 3B 模型嚴格的格式控制能力
 ```
 
-#### Group 1: Tier 1 — Temporal Localization（時序定位指標）⭐ v4.1 新增
-
-```python
-# 學生預測的 timestamps 與 teacher (Claude) 的 timestamps 比對
-# 依據：SoccerNet action spotting (CVPR 2018)、VTG-LLM (AAAI 2025)
-
-temporal_metrics = {
-    "Temporal F1@5s":
-        "學生 ts 落在老師 ts ±5s 內算 TP，計算 P/R/F1",
-    "Temporal F1@3s":
-        "tight 版本（更嚴格）",
-    "Average-mAP@[1,3,5,10]s":
-        "SoccerNet 標準：多 tolerance 取曲線下面積",
-    "T-MAE":
-        "matched ts 對的平均秒數誤差",
-    "Timing Distribution Similarity":
-        "predicted ts 密度分布 vs ground truth 密度分布的 Earth Mover's Distance"
-}
-```
+**指標設計說明**：SCR 與 TVR 兩個指標分別對應「通用 JSON 合規」與「SimLens 任務特化合規」兩個正交維度。這個切分讓我們在 Table 2 能診斷出失敗模式：若 SCR 高但 TVR 低，代表「格式對但 timestamp 不合理」（例如 Claude 給出 03:45 但影片只有 02:30），這是 sparse temporal prediction 任務獨有的失敗模式。
 
 #### Group 2: Tier 2 — Content Quality（內容指標）
 
@@ -939,160 +950,367 @@ content_metrics = {
 }
 ```
 
+**評估粒度與聚合方式**（每個維度算法不同，Table 1b 每個 cell 對應計算層級）：
+
+| 維度 | 評估單位 | 該 cell（如 P1 / Persona Cons.）的計算 |
+|------|---------|----------------------------------------|
+| Persona Consistency | per **list** | mean over 100 影片：PersonaGym(P1_desc, P1's full sparse list for video_i) |
+| Linguistic Habits | per **persona-corpus** | concat P1 在 100 影片的所有 comments → Qwen judge 對照 PersonaChat P1 dialogue ground truth |
+| Local Relevance (BERTScore) | per **comment** | 雙層平均：mean over P1 在該影片的所有 comments → mean over 100 影片 |
+| Coherence | per **list** | mean over 100 影片：coherence_score(P1's full sparse list for video_i) |
+| Engagingness (UniEval) | per **comment** | 雙層平均：mean over P1's all comments per video → mean over 100 影片 |
+| Distinct-1 / Distinct-2 | per **persona-corpus** | concat P1 在 100 影片的所有 comments → 計算整 corpus n-gram diversity |
+
+**Std-Dev 行（Table 1b 底部）的算法**：
+跨 8 個 persona 的標準差，量「8 個 LoRA 訓練是否均勻」 — 不是每個 persona 內部跨影片的 std。
+```python
+std_dev_persona_cons = std([P1.cell, P2.cell, ..., P8.cell])  # n=8
+```
+若 std-dev > 0.10 → 顯示某個 persona 拖垮整體（例：P5 very low activity 訓練資料太少）。
+
 #### Group 3: Tier 3 — List-Level（列表層級指標）⭐ v4.1 新增
 
 ```python
+# 設計原則：
+#   1. 避免 reward-evaluation contamination
+#      ✗ Frequency Match Rate（與 R_frequency_match 直接重複）
+#      ✗ Coverage Spread（與 R_coverage_diversity 直接重複）
+#   2. 量「persona 內容差異」而非「persona timestamp 差異」
+#      ✗ Persona Differentiation (Jaccard timestamps) — 邏輯有破口
+#         共同爆點時 8 personas 自然會在同 timestamp 反應，
+#         Jaccard timestamps 不能反映「反應內容」的 persona-specific 差異
+#      ✓ 改用 Persona Content Distinctiveness (Embedding-based)
+
 list_metrics = {
-    "Frequency Match Rate":
-        "list 長度落在 persona expected_comment_count 範圍的比例",
-    "Coverage Spread":
-        "list 內 timestamp 的時間分布廣度（normalized 0-1）",
-    "Empty-List Accuracy":
-        "對於 teacher 也輸出空陣列的 (video, persona) 對，"
-        "student 是否也輸出空陣列（取代 v2.0 None Prediction F1）",
-    "Persona Differentiation":
-        "8 個 persona 對同一影片的 list 之間的 Jaccard 距離 "
-        "（高代表 persona 真的有區分能力，不只是換口頭禪）"
+    "Teacher Alignment Score (TAS)":
+        "Student 預測的 timestamps vs Teacher (Claude) 預測的 timestamps 的對齊度。"
+        "用 ±5s tolerance window 做 greedy matching，計算 temporal F1 @ 5s。"
+        "借 SoccerNet (CVPR 2018) action spotting 的 tolerance window 範式。"
+        "獨立於 reward — 直接量「Phase 1 蒸餾是否成功讓 Student 學到 Teacher 的時序判斷」，"
+        "reward 只優化「絕對時點顯著性」(R_timing)，不直接優化「跟 Teacher 重合度」。"
+        "預期：Llama zero-shot ~0.32, Phase 1 SFT ~0.68, Full ~0.78。",
+    "Persona Content Distinctiveness (Embedding-based)":
+        "對每個 persona，把該 persona 對 100 部影片的所有 comments concat 起來，"
+        "用 OpenAI text-embedding-3-small 嵌入成一個 persona-level embedding。"
+        "8 個 persona 兩兩算 cosine distance，取 28 對的平均（0-1）。"
+        "獨立於 reward — 量 8 個 LoRA 學到的「persona-specific 內容風格」差異。"
+        "高分 → 8 個 persona 真的寫出風格不同的評論；"
+        "低分 → 8 個 LoRA 只是換口頭禪，內容本質相同。"
 }
 ```
 
-#### Group 4: Human Evaluation（25 人 Likert）
+**為什麼不用 Jaccard timestamps？**
+共同爆點時 8 personas 都在同 timestamp 反應是合理的（例：影片 0:42 主持人摔手機，
+所有 persona 都會留言，只是 P1 心疼、P2 講螢幕、P5 說教、P8 玩梗）。
+Jaccard timestamps 會把這個合理行為錯判為「LoRA 失敗」。
+正確做法是量「**反應內容**」的差異，不是「**反應時間**」的差異。
+
+#### Group 4: Human Evaluation（25 人 Crowd Study, 照 SimTube IUI 2025 規格）
+
+> **設計原則**：完全對齊 SimTube IUI 2025 Section 6.1 protocol（招募平台 / 樣本數 /
+> 品管流程 / 統計方法），確保 Table 5 數字可與 SimTube paper 直接比對。在此基礎上
+> **新增 Timing Naturalness 維度**對應 SimLens 核心貢獻（sparse temporal localization），
+> 該維度 SimTube 因無 timestamp 輸出而標 N/A。
 
 ```python
 human_eval = {
-    "participants": 25,
-    "platform": "Upwork or Prolific",
-    "tasks_per_participant": "1 short YouTube video (1–3min) + 8 personas' sparse lists",
-    "video_count": 8,
-    "rating_scale": "7-point Likert",
-    "dimensions": [
-        "Timing Naturalness（這些時間點是否合理留言）",
-        "Persona Believability（像不像該 persona 會留的）",
-        "Helpfulness（對創作者是否有用）"
+    # ─── 招募（照 SimTube Section 6.1）───
+    "participants":      25,
+    "platform":          "Upwork（與 SimTube IUI 2025 一致，非 Prolific）",
+    "recruitment":       "隨機 crowd workers，不做 demographic-matching",
+    "recruitment_rationale": (
+        "與 SimTube / PersonaGym / PersonaLLM 學界範式一致 — persona simulation "
+        "領域慣例量第三方 believability 而非 self-reported alignment；且 PersonaChat "
+        "persona 過於 niche，Upwork screener 無法精確匹配。"
+    ),
+    "compensation":      "$15 USD/人 × 25 ≈ $375 + 5% buffer ≈ $400",
+
+    # ─── 任務分配 ───
+    "video_count":               8,
+    "video_categories":          ["vlog", "教學", "遊戲", "生活", "旅遊",
+                                  "動畫", "音樂", "美食"],   # YouTube 主流 genre
+    "videos_per_participant":    8,        # 每人評全 8 部，與 SimTube 一致
+    "comments_per_video":        30,       # 與 SimTube Section 6.1 完全一致
+    "total_ratings":             "25 人 × 8 影片 × 30 條 × 4 維度 = 24,000 個 Likert",
+
+    # ─── 每部影片 30 條評論池組成（雙盲、隨機順序）───
+    "comment_pool_per_video": {
+        "SimLens_Full":           8,    # 8 personas × 1 條代表評論
+        "SimLens_SFT_only":       8,    # ablation：證明 Phase 2 RLAIF 有效
+        "Claude_zero_shot":       8,    # Teacher baseline
+        "SimTube_baseline":       1,    # whole-video baseline (無 timestamp)
+        "Llama_3B_zero_shot":     5,    # floor baseline (5 personas 隨機抽)
+        # 合計：30 條
+    },
+
+    # ─── 評分維度（照 SimTube 3 維 + Timing 1 維）───
+    "rating_dimensions": [
+        "Relevance        — 與影片該時間點內容相關度",        # 照 SimTube
+        "Believability    — 像真實 YouTube 用戶會留的評論",   # 照 SimTube
+        "Helpfulness      — 對創作者了解觀眾反應有幫助",     # 照 SimTube
+        "Timing Naturalness — 在這個 timestamp 留此評論的時機合理",  # SimLens 新增
+        # ※ SimTube baseline 因無 timestamp，Timing 維度標 N/A
+    ],
+    "rating_scale": "7-point Likert (1=完全不同意, 7=完全同意)",
+
+    # ─── 額外：Forced-choice A/B 對打（5 題）───
+    "forced_choice_questions": {
+        "count":         5,
+        "format":        "對於 P_n（給定 persona 描述），下面哪一條更像他會留的？",
+        "options":       "(A) SimLens 出 vs (B) SimTube/Claude 出，順序隨機、來源不告知",
+        "purpose":       "提供 head-to-head 勝率，比絕對 Likert 更具說服力",
+        "analysis":      "Binomial test (SimLens 勝率 vs 50%)",
+    },
+
+    # ─── 5 階段 form 流程（照 SimTube）───
+    "form_stages": [
+        "1. Watch Video       — 強制觀看完整影片",
+        "2. Video Quiz        — 4-5 題選擇題，必須 ≥80% 正確才能繼續",
+        "3. Write Summary     — ≥50 字影片摘要（作為 reference 與二次過濾）",
+        "4. Rate Comments     — 30 條評論 × 4 維度 + 5 題 forced-choice",
+        "5. Form Feedback     — 開放回饋（流程是否清楚）",
     ],
     "quality_control": {
-        "must_watch_video": True,
-        "must_pass_video_quiz": "80% accuracy",
-        "must_write_summary": True
+        "must_watch_video":      True,
+        "must_pass_video_quiz":  "≥80% accuracy",
+        "must_write_summary":    "≥50 字",
+        "attention_checks":      "Form 中嵌入 2 題 attention check（如「請選 4」）",
     },
-    "estimated_cost": "$300-500 USD"
+
+    # ─── 統計分析（照 SimTube Section 6.1）───
+    "statistical_analysis": {
+        "primary_test":      "Wilcoxon Signed-Rank Test（paired comparison）",
+        "multiple_comparison": "Bonferroni Correction",
+        "significance_level": "α = 0.05",
+        "comparisons": [
+            "SimLens Full vs SimTube              → 證明 SimLens 整體更優",
+            "SimLens Full vs SimLens SFT-only     → 證明 Phase 2 RLAIF 有效",
+            "SimLens Full vs Claude zero-shot     → 證明蒸餾達 Teacher 水準",
+            "SimLens Full vs Llama-3B zero-shot   → 證明訓練流程有效",
+        ],
+        "forced_choice_test": "Binomial test (one-sided, p_null=0.5)",
+    },
+
+    # ─── 報告呈現 ───
+    "reporting": {
+        "main_table":      "Table 5（5 systems × 4 dimensions, mean ± SD + p-values）",
+        "qualitative":     "Appendix A：3-5 個 case study figure（同部影片不同系統輸出對比）",
+        "ablation_subset": "Appendix B：per-persona Likert breakdown（8 personas × 4 維度）",
+    },
+
+    # ─── 預算與時程 ───
+    "estimated_cost":  "$400 USD（25 × $15 + 5% buffer）",
+    "estimated_time":  "Week 7 完成招募 + 收集 + 統計分析（7 天）",
+    "ethics":          "通過所屬機構 IRB review；參與者匿名、可隨時退出",
 }
 ```
 
-#### Group 5: External Anchor — Bilibili 彈幕弱對齊（v4.1 新增 sanity check）
-
-```python
-# 依據：VideoIC (ACM MM 2020)、Recommending Highlights via DanMaKu (IEEE 2018)
-# 重要：這是「群體爆點識別能力」的弱錨點驗證，不是「個人行為對齊」
-
-external_anchor = {
-    "purpose": "驗證 SimLens 識別出的高互動時段，是否與真實群體爆點重合",
-    "dataset": "VideoIC (ACM MM 2020) 或自爬 Bilibili 短片區彈幕",
-    "sample_size": "30-50 部 Bilibili 短影片（中文，1–3min 範圍對齊）",
-    "metric": {
-        "Peak Overlap Rate": 
-            "SimLens 8 personas 合併的 timestamps 集合，"
-            "與真實彈幕密度峰值（top-10 segments）的 ±3s 重合率",
-        "expected": ">= 60%（弱對齊，非個人行為對齊）"
-    },
-    "framing": "weak external anchor / sanity check, not ground truth alignment"
-}
-```
-
-#### Group 6: GPT-4 Spot-check
-
-```python
-# 對 200 個隨機 sparse list 樣本，用 GPT-4o 跑同樣 reward 評分
-# 計算與本地 judge 的 Spearman ρ
-# 預期：ρ > 0.7（強相關，本地 judge 可信）
-# 成本：$5 USD
-```
-
-### 5.3 Ablation Study 設計（v4.1 重新規劃）
+### 5.3 Ablation Study 設計
 
 ```
-必跑的 ablations（共 10 組，缺一不可）：
+Ablation 的目的：證明 SimLens 每個關鍵設計決策都是必要的
+（不是所有可能的變體都跑——只跑「移除某設計後性能下降」的對照）
 
-A1.  SimLens v4.1 (full)                              ← 完整方法
-A2.  - w/o Phase 2 (RLAIF) → SFT only                 ← 證明 RLAIF 必要
-A3.  - w/o Phase 1 (Distillation) → DPO from zero-shot ← 證明蒸餾必要
-A4.  - w/o Multi-LoRA (single LoRA + persona prompt)   ← 證明多 LoRA 必要
-A5.  - w/o Multi-aspect Reward (single R_content)      ← 證明 4 reward 必要
-A6.  - w/o R_timing                                    ← 證明時序顯著性必要
-A7.  - w/o R_frequency_match                           ← 證明活躍度匹配必要
-A8.  - w/o R_coverage_diversity                        ← 證明覆蓋多樣性必要
-A9.  - w/o Iterative DPO (1 round only)                ← 證明迭代必要
-A10. ⭐ v2.0 cumulative segment-level vs v4.1 one-shot ← 證明架構升級的價值
-     （這是 v4.1 最重要的 ablation，直接證明「事後反思」設計優於「逐段 cumulative」）
+必跑 ablations（共 8 組）：
+
+═══ 訓練流程 ablation ═══
+A1. SimLens (full)                              ← 完整方法（baseline）
+A2. - w/o Phase 2 (RLAIF) → SFT only            ← 證明 RLAIF 必要
+A3. - w/o Phase 1 (Distillation)                ← 證明蒸餾必要
+    → DPO from Llama-3B zero-shot
+A4. - w/o Multi-LoRA                            ← 證明多 LoRA 必要
+    → single LoRA + persona injected via prompt
+
+═══ Reward 設計 ablation ═══
+A5. - w/o Multi-aspect (only R_content_quality) ← 證明 4 reward 比 1 reward 好
+A6. - w/o R_timing                              ← 證明時序顯著性 reward 必要
+A7. - w/o R_frequency_match                     ← 證明活躍度匹配 reward 必要
+A8. - w/o R_coverage_diversity                  ← 證明覆蓋多樣性 reward 必要
+
+註：每個 ablation 獨立訓練、獨立評估，每組產生「全 6 指標 × 8 persona」的數字
+    為避免結果表過度膨脹，§5.4 主結果表只列關鍵 baseline，完整 ablation 數字
+    放 appendix（或 supplementary materials）
 ```
 
-### 5.4 預期結果表（你論文的 main result）
+### 5.4 預期結果表（論文 main results）
 
-#### Table 1: 主結果（Tier 1 + Tier 2 + Tier 3）
+> **重要 Framing：Table 1 不是 SOTA 排行榜，是「能力對齊驗證」**
+>
+> 影片評論生成（**video commentary generation**）這個任務目前**沒有公認的學術 SOTA**：
+> - SimTube (Hung et al., IUI 2025) 是領域內**唯一**直接前身，發表至今仍是 niche
+> - GPT-4o / Claude-3.5 Sonnet **不是專門評論影片的模型**，只是強通用 LLM
+> - Llama-3.2-3B zero-shot 完全不是 SOTA，只是「未訓練起點」
+>
+> 因此 Table 1 的設計目的是 **3 件事**，而非 leaderboard 競賽：
+> 1. **師徒對齊驗證**：Student (3B) 在 5 維度上是否接近 / 超越 Teacher (Claude)
+> 2. **跨大模型穩定性對照**：GPT-4o 作為**獨立第二大模型**，避免結果是 Claude 特殊偏好
+> 3. **vs SimTube 直接競爭**：唯一同類學術前身的比較
+>
+> **Per-persona breakdown 設計說明**：
+> 因為 SimLens 訓練後是 8 個獨立 LoRA adapter（per persona），每次推理都要指定
+> 一個 persona、掛上對應 adapter。所以**所有評估指標都必須 per-persona 計算**，
+> macro-average（8 persona 平均）只是輔助數字。
+>
+> Table 1a 報告 macro-avg（給 reviewer 一眼看到整體性能）
+> Table 1b 報告 per-persona breakdown（證明 8 個 LoRA 都各自學會了）
+> Table 1c 報告分階段（Phase 1 / Phase 2 / Full）的 macro-avg 對比
+
+#### Table 1a: 主結果 Macro-Avg（能力對齊驗證 + 跨模型對照）
 
 ```
-Method                          | T-F1@5s | Persona | Linguistic | Local Rel. | Coherence | Engaging
-─────────────────────────────────────────────────────────────────────────────────────────────────
-Llama-3.2-3B zero-shot          | 0.32    | 0.42    | 0.38       | 0.45       | 0.50      | 0.45
-Claude-3.5 Sonnet zero-shot     | 0.71    | 0.74    | 0.68       | 0.65       | 0.78      | 0.72
-GPT-4o zero-shot                | 0.73    | 0.76    | 0.70       | 0.66       | 0.80      | 0.74
-SimTube (whole-video)           | N/A     | 0.78    | 0.72       | N/A        | 0.79      | 0.76
-SimLens v2.0 (cumulative)       | N/A     | 0.81    | 0.79       | 0.62       | 0.76      | 0.74
-─────────────────────────────────────────────────────────────────────────────────────────────────
-SimLens v4.1 Phase 1 only (SFT) | 0.68    | 0.71    | 0.66       | 0.60       | 0.74      | 0.69
-SimLens v4.1 Phase 2 only (DPO) | 0.62    | 0.73    | 0.69       | 0.58       | 0.71      | 0.70
-SimLens v4.1 Full (SFT + DPO) ⭐| 0.78    | 0.83    | 0.81       | 0.66       | 0.78      | 0.77
-                                | > Tea.  | > Tea. | > Tea.     | ≈ Tea.    | ≈ Tea.   | ≈ Tea.
+Method                          | Role         | Persona | Linguistic | Local Rel. | Coherence | Engaging
+                                |              | Cons.   | Habits     | (BERTScore)|           | (UniEval)
+──────────────────────────────────────────────────────────────────────────────────────────────────
+Llama-3.2-3B zero-shot          | 未訓練起點   | 0.42    | 0.38       | 0.45       | 0.50      | 0.45
+SimTube (Hung 2024)             | 唯一同類前身 | 0.78    | 0.72       | N/A        | 0.79      | 0.76
+                                | (whole-video)|         |            |            |           |
+Claude-3.5 Sonnet               | Teacher      | 0.74    | 0.68       | 0.65       | 0.78      | 0.72
+GPT-4o                          | 獨立大模型對照| 0.76    | 0.70       | 0.66       | 0.80      | 0.74
+──────────────────────────────────────────────────────────────────────────────────────────────────
+SimLens Full (SFT + DPO) ⭐     | 本研究 (3B)  | 0.83    | 0.81       | 0.66       | 0.78      | 0.77
+                                |              | > Tea. | > Tea.     | ≈ Tea.    | ≈ Tea.   | ≈ Tea.
 ```
 
 **重點論述**：
-- **時序定位（Temporal F1@5s）**：SimLens v4.1 > Claude 蒸餾後可超越 teacher（RLAIF 有效）
-- **領域指標**：SimLens > Claude（持續驗證 v2.0 結論）
-- **通用指標**：SimLens ≈ Claude（蒸餾有效）
-- 對比 v2.0：v4.1 在持平領域指標的同時，新增 Tier 1 時序定位能力
+- **領域指標 (Persona / Linguistic)**：SimLens (3B) > Claude (Teacher)、> GPT-4o，RLAIF DPO 在 persona-specific 維度上有效超越 600B+ teacher
+- **通用指標 (Coherence / Engaging)**：SimLens ≈ Claude ≈ GPT-4o，蒸餾保留通用能力
+- **vs SimTube**：SimTube 只能給整片 1 條評論，SimLens 在 persona 與 linguistic 上勝出
 
-#### Table 2: Format Compliance Rate（v4.1 新增）
+#### Table 1b: Per-Persona Breakdown（8 LoRA 的個別表現）
 
-```
-Method                          | JPR    | SCR    | TFR    | TLR    | Composite FCR
-──────────────────────────────────────────────────────────────────────────────
-Llama-3.2-3B zero-shot          | 42%    | 35%    | 28%    | 22%    | 32%
-Claude zero-shot                | 96%    | 92%    | 88%    | 85%    | 90%
-SimLens v4.1 Phase 1 (SFT)      | 99%    | 97%    | 95%    | 92%    | 96%
-SimLens v4.1 Full + ConDecode   | 100%   | 99%    | 98%    | 96%    | 98%
-```
-
-#### Table 3: List-Level 指標（v4.1 新增）
+> 8 個 personas P1–P8 由 PersonaChat top-8 程式取樣產生（§2.3）。
+> Activity（高/中/低）由 expected_comment_count_range 自動標記。
+> 數字為預期值，實際 personas 與 activity 標籤在 Week 1 取樣腳本跑完後填入。
 
 ```
-Method                          | Freq Match | Coverage | Empty-List Acc | Persona Diff (Jaccard)
-─────────────────────────────────────────────────────────────────────────────────────────────
-Llama-3.2-3B zero-shot          | 0.31       | 0.42     | 0.40           | 0.18
-Claude zero-shot                | 0.68       | 0.71     | 0.65           | 0.42
-SimLens v4.1 Full               | 0.84       | 0.78     | 0.79           | 0.61
-                                | > Tea.    | > Tea.  | > Tea.        | > Tea.
+Persona     | Activity | Persona | Linguistic | Local Rel.| Coherence | Engaging
+                       |  Cons.  |            |           |           |
+─────────────────────────────────────────────────────────────────────────────────
+P1 (sampled)| high     | 0.85    | 0.87       | 0.68      | 0.79      | 0.81
+P2 (sampled)| low      | 0.82    | 0.79       | 0.71      | 0.83      | 0.74
+P3 (sampled)| medium   | 0.84    | 0.82       | 0.66      | 0.78      | 0.78
+P4 (sampled)| medium   | 0.83    | 0.80       | 0.65      | 0.77      | 0.75
+P5 (sampled)| very low | 0.78    | 0.75       | 0.69      | 0.81      | 0.71
+P6 (sampled)| high     | 0.86    | 0.85       | 0.64      | 0.74      | 0.80
+P7 (sampled)| med-low  | 0.81    | 0.78       | 0.67      | 0.79      | 0.74
+P8 (sampled)| very high| 0.85    | 0.86       | 0.62      | 0.75      | 0.82
+─────────────────────────────────────────────────────────────────────────────────
+Macro-Avg              | 0.83    | 0.81       | 0.66      | 0.78      | 0.77
+Std-Dev                | 0.03    | 0.04       | 0.03      | 0.03      | 0.04
 ```
 
-#### Table 4: 效率比較（v4.1 vs v2.0 vs SimTube）
+**重點論述**：
+- **8 個 persona std-dev 都 < 0.05** → 證明 8 LoRA 訓練均勻，沒有特定 persona 失敗
+- **高活躍 personas 各項指標較高** → list 較長提供更多訓練訊號
+- **低活躍 personas 的 Local Relevance 反而較高** → 留言精選度高、內容更貼合
+- **這是 SimTube 完全做不到的維度** → SimTube 只能給整片 1 條評論，無法 per-persona 對比
+
+#### Table 1c: 訓練階段對比（Macro-Avg）
 
 ```
-Method            | API Calls / video  | Total Cost / 100 videos | VRAM   | Latency / video
-──────────────────────────────────────────────────────────────────────────────
-SimTube           | 1 (whole-video)    | $94                     | N/A    | ~45s
-SimLens v2.0      | 96 cells × 8 pers  | $115                    | 6.5GB  | ~360s (跑 96 cells)
-                  | = 96 calls         |                         |        |
-SimLens v4.1 ⭐   | 8 (one-shot/pers)  | $12                     | 6.5GB  | ~24s (8 calls)
-                  |                    | -90% vs v2.0           |        | -93% vs v2.0
+Stage                          | Persona | Linguistic | Local Rel.
+─────────────────────────────────────────────────────────────────
+SimLens Phase 1 only (SFT)     | 0.71    | 0.66       | 0.60
+SimLens Phase 2 only (DPO)     | 0.73    | 0.69       | 0.58
+                               | (DPO from Llama-3B zero-shot)
+SimLens Full (SFT + DPO) ⭐    | 0.83    | 0.81       | 0.66
+─────────────────────────────────────────────────────────────────
+Improvement: SFT → Full        | +0.12   | +0.15      | +0.06
 ```
 
-#### Table 5: 外部錨點驗證（v4.1 新增 Bilibili 彈幕）
+**重點論述**：兩階段訓練（SFT 提供基礎能力 + DPO 提供 alignment）顯著優於單階段，驗證 §3.5 / §4.6 引用的兩階段範式（Thakkar ACL 2024、Multi-MLLM Distillation 2025）。
+
+#### Table 2: Format Compliance Rate
 
 ```
-Verification                              | SimLens v4.1 | Claude | GPT-4o
-──────────────────────────────────────────────────────────────────────
-Peak Overlap Rate (vs VideoIC top-10 seg) | 64%          | 68%    | 70%
-                                          | (sanity check, weak anchor)
+Method                              | SCR    | TVR    | Composite FCR
+─────────────────────────────────────────────────────────────────────
+Llama-3.2-3B zero-shot              | 35%    | 28%    | 28%
+Claude zero-shot                    | 92%    | 86%    | 86%
+SimLens Phase 1 (SFT)               | 97%    | 93%    | 93%
+SimLens Full + Outlines (推理時)¹   | 99%    | 97%    | 97%
 ```
+
+¹ **Outlines 是什麼？**
+  Outlines (Willard et al., 2023, arXiv 2307.09702) 是一個 **constrained decoding** 框架，
+  在 LLM 生成階段**逐 token 過濾**：每生成一個 token 前，先檢查「這個 token 會不會違反
+  預設的 JSON schema？」若會違反就強制換下一個合法 token，**確保輸出 100% 符合 JSON 結構**。
+
+  替代品：XGrammar (NVIDIA/CMU)、Guidance (Microsoft)。SimLens 推理時掛 Outlines。
+
+  注意：constrained decoding **只能保證結構合規 (SCR)**，**無法保證時序合理性 (TVR)**：
+  - SCR 99%+：JSON 結構強制對（key 名、引號、括號）
+  - TVR 仍只 97%：模型仍可能輸出超出影片長度的 timestamp（如 03:45 但影片只有 02:30）
+                   或重複、亂序的 timestamp
+  → 這正是 SimLens 訓練 LoRA 的價值：**時序合理性必須學會，不能靠後處理強制**
+
+**讀法**：
+- SCR 高 / TVR 低 = 格式對但 timestamp 不合理（範圍超出 / 重複 / 亂序）
+- 兩者皆低 = 模型連 JSON 結構都產不出
+- 完整 SimLens（SFT+DPO+Outlines）三者疊加才能在兩個維度同時達 97%+
+
+#### Table 3: List-Level 指標（reward-independent）
+
+```
+```
+Method                          | Teacher Alignment | Persona Content
+                                | (TAS, F1@5s)      | Distinctiveness
+─────────────────────────────────────────────────────────
+Llama-3.2-3B zero-shot          | 0.32              | 0.22
+Claude zero-shot (Teacher)      | 1.00*             | 0.51
+SimLens Phase 1 only (SFT)      | 0.68              | 0.55
+SimLens Full (SFT + DPO) ⭐     | 0.78              | 0.68
+
+* Teacher 對自己的 alignment = 1.00 by definition
+```
+
+**設計說明**：
+本表 2 個指標皆**獨立於 Phase 2 reward**（避免 evaluation contamination）：
+
+- **Teacher Alignment Score (TAS)**：量 Student 預測的 timestamps 與 Teacher (Claude) 預測的 timestamps 對齊度（temporal F1 @ ±5s tolerance）。借 SoccerNet (CVPR 2018) action spotting 範式。reward 只優化「絕對時點顯著性」(R_timing)，不直接優化「跟 Teacher 重合度」，所以這個指標獨立。
+  → **驗證 Phase 1 蒸餾是否成功**：學生模型有沒有學到老師的時序判斷能力
+- **Persona Content Distinctiveness**：量 8 個 LoRA 寫出的評論「內容風格」彼此差異，OpenAI text-embedding-3-small 對 concat comments 嵌入後兩兩 cosine distance 取 28 對平均。reward 只優化「單一 persona 內部品質」，不直接優化「跨 persona 內容差異」，因此此指標獨立於 reward。
+
+→ 這 2 個指標的提升才是 SimLens 真正的能力證明，非 reward optimization 直接帶來的副作用。
+
+#### Table 4: 效率比較 — 訓練成本 vs 推理成本（vs SimTube）
+
+> **關鍵價值主張**：SimTube 是 pay-per-use（每跑一次都要付 API），
+> SimLens 是 train-once-then-free（前期付一次蒸餾錢，部署後 user 端永遠免費）。
+> 這個成本結構差異對任何要規模化使用的創作者 / 研究者都是核心優勢。
+
+```
+                            │ 訓練成本（一次性開發者付）│ 推理成本（per video, user 付）│ Latency │ VRAM
+                            │  Claude / OpenAI API      │  user 端跑一部影片要付的       │         │
+─────────────────────────────────────────────────────────────────────────────────────────────────
+SimTube (Hung 2024)         │  $0                       │  ~$0.225 (Claude 3.5 Sonnet)   │  ~45s   │ N/A
+                            │ (純 prompting，無訓練)    │  每部影片都要付一次 API 費     │         │ (need API)
+                            │                           │  (50K input + 5K output token  │         │
+                            │                           │   × Sonnet 定價)               │         │
+─────────────────────────────────────────────────────────────────────────────────────────────────
+SimLens (本研究) ⭐         │  $42-72                   │  $0 ⭐                         │  ~24s   │ 6.5GB
+                            │  ($12 Claude 蒸餾 +       │  (本地 Llama-3B + 8 LoRA       │         │ (consumer
+                            │   $30-60 雲端 GPU 訓練)   │   完全本地推理，無 API 費)     │         │  GPU)
+                            │  一次性前置投資            │                                │         │
+─────────────────────────────────────────────────────────────────────────────────────────────────
+
+**Cost Crossover 分析（規模化成本回本點）：**
+  SimLens 訓練成本 $42-72 ÷ SimTube per-video $0.225 ≈ **187–320 部影片**
+
+  解讀：
+  - 跑 < 200 部影片：SimTube 較划算（不用一次性投資）
+  - 跑 200+ 部影片：SimLens 開始回本
+  - 跑 1000 部影片：SimTube 累積 $225，SimLens 仍只 $42-72
+  - 跑 10000 部影片：SimTube 累積 $2,250，SimLens 仍只 $42-72
+  - **長期使用 / 大規模部署：SimLens 成本優勢不可逆**
+
+**附加優勢（無法量化但同等重要）：**
+  - **隱私**：SimLens 全本地推理，創作者影片不上傳第三方 API
+  - **離線可用**：SimLens 不依賴外部 API 連線
+  - **可微調**：SimLens 可針對特定創作者風格進一步 fine-tune（SimTube 無此能力）
+  - **消費級硬體**：SimLens 在 24GB VRAM 跑得動（RTX 3090/4090 等級）
+```
+
 
 ### 5.5 評估學術依據
 
@@ -1103,12 +1321,10 @@ Peak Overlap Rate (vs VideoIC top-10 seg) | 64%          | 68%    | 70%
 | Engagingness | PersoBench (Huang et al., 2024) | UniEval-based engagingness |
 | Coherence | Score Before You Speak (2025) | coherence dimension |
 | 25 人 crowd study | SimTube Section 6.1 | quiz + summary + rating protocol |
-| **Format Compliance Rate** | **IFEval (arXiv 2311.07911)、JSONSchemaBench (arXiv 2501.10868)、StructEval (arXiv 2505.20139)** | 結構化輸出評估 |
-| **Temporal F1 / Average-mAP** | **SoccerNet (CVPR 2018)、VTG-LLM (AAAI 2025)** | action spotting 標準評估範式 |
-| **Timing Distribution Similarity** | **本研究新增** | EMD 量整體分布而非點對點 |
-| **Empty-List Accuracy** | **本研究新增** | 取代 v2.0 None Prediction F1 |
-| **Persona Differentiation (Jaccard)** | **本研究新增** | 量 8 個 persona 是否真的有區分 |
-| **Bilibili 彈幕弱錨點** | **VideoIC (Wang et al., ACM MM 2020)、Recommending Highlights via DanMaKu (Lv et al., IEEE 2018)** | 群體爆點識別的外部驗證 |
+| **Schema Compliance Rate (SCR)** | **JSONSchemaBench (arXiv 2501.10868)** | JSON schema compliance 評估範式 |
+| **Timestamp Validity Rate (TVR)** | **本研究新增（受 IFEval verifiable instruction 啟發）** | SimLens 任務特化指標，deterministic 驗證 |
+| **Teacher Alignment Score (TAS, F1@5s)** | **SoccerNet (CVPR 2018) action spotting paradigm** | 借「±tolerance window 算 true positive」範式量 Student vs Teacher timestamp 對齊度，獨立於 reward |
+| **Persona Content Distinctiveness (Embedding)** | **本研究新增**（沿用 SimTube IUI 2025 的 OpenAI text-embedding-3-small）| 量 8 個 persona 寫的評論「內容風格」彼此差異，獨立於 reward |
 | Ablation 設計 | DPO 原論文 (Rafailov et al., 2023) | 標準 ablation 順序 |
 
 ---
@@ -1269,15 +1485,17 @@ Format: Markdown with clear sections.
 ### 7.1 8 週時程表
 
 ```
-Week 1: 環境建置 + Persona 設計
-  □ 確認 GPU 環境（最少 RTX 3090 24GB）
+Week 1: 環境建置 + Persona 取樣
+  □ 確認 GPU 環境（最低門檻 RTX 3090 24GB；本研究實際用 RTX 5090 32GB）
   □ 安裝 LLaMA-Factory / TRL / Ollama / Outlines（constrained decoding）
   □ Pull Llama-3.2-3B、Qwen3-32B Q4、LLaVA-NeXT
-  □ 撰寫 8 個 persona YAML（含 expected_comment_count_range）
+  □ 下載 PersonaChat 8K 資料集（Hugging Face: bavard/personachat_truecased）
+  □ 抓 5-10 部影片做 pipeline sanity check + 提取 keywords
+  □ 跑 §2.3 取樣腳本：PersonaChat → top-8 personas（OpenAI text-embedding-3-small + MMR）
+  □ 用 Claude zero-shot 為 8 個 personas 估 expected_comment_count_range
   □ 定義 sparse JSON schema（用於 constrained decoding）
   □ 寫好 4 個 reward 函數骨架 + 4 群評估指標骨架
-  □ 抓 5-10 部影片做 pipeline sanity check
-  ★ Milestone 1：環境就緒、pipeline 跑通
+  ★ Milestone 1：環境就緒、pipeline 跑通、8 個 personas 抽取完成
 
 Week 2: 大規模影片素材收集 + Timeline Script Pipeline
   □ 用 YouTube Data API 收集 100 部短 YouTube 影片（嚴格 60–180s）
@@ -1285,15 +1503,34 @@ Week 2: 大規模影片素材收集 + Timeline Script Pipeline
   □ 跑 Whisper-Large-v3（含時間戳）
   □ 跑 LLaVA-NeXT 段描述（每 10 秒一段）
   □ UMaT-inspired 時序對齊 → 全局 Timeline Script
-  □ 同時爬 30-50 部 Bilibili 短片彈幕（外部錨點用）
-  ★ Milestone 2：100 部 YouTube + 30-50 部 Bilibili 就緒
+  ★ Milestone 2：100 部 YouTube 就緒
 
-Week 3: Phase 1 蒸餾資料生成
+Week 3: Phase 1 蒸餾資料生成 + Teacher 雙重驗證
+
+  ─── Day 1: Pre-flight Sanity Check（必過才能繼續）⭐ ───
+  □ 【Pre-flight】Teacher Timestamp Fidelity Sanity Check
+     成本：~$0.6 USD + 30 分鐘人工檢查
+     範圍：5 部 YouTube 影片 × 8 personas = 40 個 sparse list
+     步驟：
+       1. 跑 Claude 產 40 個 sparse list
+       2. 隨機抽 ~50 個 (timestamp, comment) 對
+       3. 人工檢查每對：開影片到該 timestamp，看 comment 是否
+          與該秒事件語義相關（Yes / No）
+     通過標準：
+       ≥ 80% Yes  → Claude 能力 OK，繼續 Day 2 大規模生成
+       60–80% Yes → 調 Claude prompt 加強 timestamp 約束，重跑 sanity check
+       < 60% Yes  → 換 GPT-4o 當 teacher（Limitation L12 fallback），重跑
+     依據：Chapter-Llama (CVPR 2025) 證明 LoRA-tuned LLM 能輸出對應
+          timestamp，但未證明 zero-shot LLM (Claude) 同樣可行 → 必須 SimLens
+          自己驗證 teacher 在這個任務上的 timestamp fidelity
+
+  ─── Day 2-7: 大規模蒸餾資料生成 ───
   □ Claude API 對每個 (影片, persona) 生成 sparse JSON list
   □ 100 影片 × 8 persona = 800 sparse lists
-  □ 預算花費：~$12 USD（v2.0 是 $115，下降 90%）
-  □ 計算 Teacher 的 Format Compliance Rate（驗證 Claude 輸出穩定性）
-  ★ Milestone 3：蒸餾訓練資料完成 + Teacher FCR 報告
+  □ 預算花費：~$12 USD（800 calls × $0.015）
+  □ 【驗證 1】Teacher Format Compliance Rate
+     計算 Claude 的 SCR / TVR（驗證輸出穩定性，預期 SCR ≥ 92%）
+  ★ Milestone 3：Sanity check 通過 + 蒸餾資料完成 + Teacher FCR 驗證通過
 
 Week 4: Phase 1 SFT 訓練 + Format Compliance 驗證
   □ 對 8 個 persona 各訓練 1 個 LoRA adapter（含 constrained JSON decoding）
@@ -1314,10 +1551,7 @@ Week 5: Phase 2 RLAIF (round 1)
 
 Week 6: Phase 2 RLAIF (round 2) + 全套 ablation
   □ Iterative DPO round 2
-  □ 跑完整 ablation：A2-A10（共 9 組）
-    - 重點：A10（v2.0 vs v4.1 架構對比）
-  □ 跑 GPT-4 spot-check（200 樣本驗證 judge）
-  □ 跑 Bilibili 彈幕 Peak Overlap 外部錨點驗證
+  □ 跑完整 ablation（見 §5.3 共 8 組）
   ★ Milestone 6：完整自動評估結果
 
 Week 7: 人類評估（Group 4）
@@ -1346,8 +1580,6 @@ Week 8: 論文撰寫 + 投稿準備
 | **JSON 格式輸出崩壞** | **中** | **強制用 Outlines/XGrammar constrained decoding** |
 | Sparse list 全空（模型懶）| 中 | R_frequency_match 強制匹配 persona 活躍度 |
 | 人類評估招募失敗 | 中 | 改用學校系內招募（30 人也夠 LBW） |
-| Qwen judge 與 GPT-4 一致性差 | 低 | 用 multi-judge ensemble |
-| Bilibili 彈幕爬取受限 | 低 | 改用公開 VideoIC 資料集 |
 
 ---
 
@@ -1356,48 +1588,48 @@ Week 8: 論文撰寫 + 投稿準備
 ### 8.1 硬體需求
 
 ```
-最低配置：
+最低配置（論文宣稱可重現門檻）：
   - 1× RTX 3090 24GB
   - 64GB RAM、1TB SSD
-  - 預估訓練時間：2 週（v2.0 是 3 週，因 sample 數少）
+  - 預估訓練時間：2 週
 
-推薦配置：
-  - 1× RTX 4090 24GB
+實際使用配置（本研究）：
+  - 1× RTX 5090 32GB（Ada Lovelace 後繼，5th-gen Tensor Cores）
   - 128GB RAM、2TB NVMe SSD
-  - 預估訓練時間：1.5 週
+  - 預估訓練時間：~1 週
+  - 額外優勢：Llama-3B + Qwen3-32B-Q4 同卡共駐
+              （6.5 + 20 = 26.5GB / 32GB），Phase 2 RLAIF online judging
+              不需在每 round 切換模型，整輪訓練 wall time 省 30-50%
+              ※ 論文仍以「24GB 消費級 GPU 可重現」為部署 framing
 
-理想配置：
-  - 2× RTX 4090 或 1× A100 40GB
+理想配置（未來擴展）：
+  - 2× RTX 5090 或 1× A100 40GB
   - 256GB RAM
-  - 預估訓練時間：5 天
+  - 預估訓練時間：3-5 天
 ```
 
-### 8.2 成本估算（v4.1 vs v2.0）
+**Framing 政策**：論文 method/deployment 章節仍以 24GB consumer-grade GPU 為基準陳述
+（這是 SimLens 對比 SimTube/Claude 的核心賣點 — 「可消費級部署」）。32GB 5090 只用於
+本研究的訓練加速，不進入 paper claim；reproducibility 章節列出最低配置 24GB 並提供
+4-bit GPTQ + LoRA 配置確保 24GB 可重現。
+
+### 8.2 成本估算
 
 ```
 雲端 GPU（如果沒有自有硬體）：
   Vast.ai RTX 4090：$0.4/hour
-  訓練總時數：~80 hours（v2.0 是 120 hours）
-  → $30-60 USD（v2.0 是 $50-180）
+  訓練總時數：~80 hours
+  → $30-60 USD
 
 API 成本：
-  Claude API（蒸餾資料）：$12 USD（v2.0 是 $115，下降 90%）
-  GPT-4o（spot-check）：$5 USD
-  → 小計：$17 USD
+  Claude API（蒸餾資料 800 calls × $0.015）：$12 USD
 
 人類評估：
   Upwork crowd-sourcing 25 人：$300-500 USD
 
-Bilibili 彈幕爬取（外部錨點）：
-  VideoIC 公開資料集：$0
-  自爬 30-50 部：$0（用 bilibili-api）
-
 總成本：
-  最低（自有 GPU + 校內招募）：$17 USD
-  標準（雲端 GPU + Upwork）：$350-580 USD
-  
-  v4.1 vs v2.0 總成本：$580 vs $800（下降 ~28%）
-  v4.1 vs v2.0 API 成本：$17 vs $120（下降 ~86%）
+  最低（自有 GPU + 校內招募）：$12 USD
+  標準（雲端 GPU + Upwork）：$345-575 USD
 ```
 
 ---
@@ -1414,7 +1646,7 @@ Bilibili 彈幕爬取（外部錨點）：
 
 2. Related Work (1 頁)
    - SimTube：whole-video persona simulation
-   - VTG-LLM (AAAI 2025) / MMDuet：event-driven sparse temporal prediction
+   - Chapter-Llama (CVPR 2025) / Socratic Models (ICLR 2023)：text-level video → LLM timestamp output
    - UMaT：multimodal temporal alignment
    - PersonaGym：persona evaluation
    - DPO + RLAIF：訓練範式
@@ -1427,16 +1659,14 @@ Bilibili 彈幕爬取（外部錨點）：
 4. Experiments (3 頁)
    - 4.1 Setup: 100 short YouTube videos (1–3min) × 8 personas (sparse lists)
    - 4.2 Format Compliance: Table 2
-   - 4.3 Main results (Tier 1 + Tier 2): Table 1
+   - 4.3 Main results (Tier 2): Table 1
    - 4.4 List-Level metrics (Tier 3): Table 3
-   - 4.5 Ablation: 10 組 configurations
-   - 4.6 User study: 25 人 (Timing Naturalness + Believability + Helpfulness)
-   - 4.7 External Anchor: Bilibili Peak Overlap (Table 5)
-   - 4.8 Efficiency: Table 4 (vs SimTube, vs v2.0)
+   - 4.5 Ablation: 8 組 configurations
+   - 4.6 User study: 25 人 (Believability + Helpfulness)
+   - 4.7 Efficiency: Table 4 (vs SimTube)
 
 5. Discussion + Limitations (0.5 頁)
-   - Post-hoc framing 的取捨
-   - v4.1 vs v2.0 的設計教訓
+   - Post-hoc framing 的取捨與優勢
    - 領域 gap：缺真實時序觀影行為資料
 
 6. Conclusion (0.5 頁)
@@ -1449,23 +1679,22 @@ C1. System Contribution
    First lightweight (3B parameter) one-shot timeline-to-sparse-JSON 
    persona-conditioned video commentary generation system.
    8-persona sparse comment list per video on consumer GPU (24GB),
-   with 90% lower API cost than cumulative segment-level v2.0 approach.
+   single Claude API call per (video, persona) pair (~$0.015).
 
 C2. Methodological Contribution
    Two-stage training paradigm for ground-truth-scarce + post-hoc setting:
    - One-shot distillation provides foundational sparse-JSON capability
    - 4-aspect list-level multi-reward RLAIF (含 novel R_frequency_match
      and R_coverage_diversity) provides domain breakthrough
-   First to integrate UMaT-style temporal alignment + VTG-LLM-style sparse 
-   prediction + PersonaGym-style persona evaluation in unified framework.
+   First to integrate Chapter-Llama-style text-level timestamp output + 
+   Socratic Models-style all-modality-as-text + PersonaGym-style persona 
+   evaluation in unified framework, applied to persona-conditioned video commentary.
 
 C3. Empirical Contribution
    First evidence that 3B model can match or exceed 600B teacher (Claude) 
    on temporal localization F1 + persona-specific dimensions.
    Format Compliance Rate (FCR) demonstrates 3B model can rise from 32% 
    zero-shot to 96%+ with distillation.
-   Bilibili VideoIC peak-overlap external anchor provides weak sim-to-real 
-   alignment evidence absent from prior work.
 
 C4. Framing Contribution (v4.1 獨有)
    Honest re-framing of "audience simulation" as "post-hoc commentary 
@@ -1482,7 +1711,7 @@ C4. Framing Contribution (v4.1 獨有)
 > 完整作者、摘要、URL 等詳細資料請參見獨立檔案 SimLens_References.md
 > （該檔對應主索引 [1]–[40]，編號與本節略有差異但內容對齊）。
 
-=== 既有引用（沿用自 v2.0）===
+=== 核心引用 ===
 
 [1] SimTube (Hung et al., 2024) — arXiv 2411.09577
     用於：總體架構、影片理解 pipeline、自動評估指標、人類評估 protocol
@@ -1543,10 +1772,7 @@ C4. Framing Contribution (v4.1 獨有)
 [19] Tülu 3 (Lambert et al., 2024)
      用於：多階段 post-training 範式
 
-[20] Judging the Judges (Krishna et al., 2024)
-     用於：Multi-judge ensemble 方法
-
-[21] Sentiment Analysis in the Age of Generative AI (Hartmann et al., 2024)
+[20] Sentiment Analysis in the Age of Generative AI (Hartmann et al., 2024)
      Customer Needs and Solutions, Springer Nature
      https://link.springer.com/article/10.1007/s40547-024-00143-4
      用於：Stage C 情感分類無需訓練的背書
@@ -1569,8 +1795,8 @@ C4. Framing Contribution (v4.1 獨有)
 
 [26] Action-Guided Engagement — arXiv 2502.12073
      "Can LLMs Simulate Social Media Engagement?"
-     用於：v2.0 None-reaction 學術前例（v4.1 已不需要 None 標籤，
-          但保留作為「行為缺失也是訊號」的概念背書）
+     用於：「行為缺失（不留言）也是訊號」的概念背書，
+          支持 SimLens 用空陣列隱式編碼「沒反應」的設計
 
 [27] Thakkar et al. (ACL 2024 Main) — arXiv 2406.04879
      "A Deep Dive into the Trade-Offs of Parameter-Efficient 
@@ -1582,33 +1808,40 @@ C4. Framing Contribution (v4.1 獨有)
 
 === v4.1 新增引用 ===
 
-[29] VTG-LLM (Guo et al., AAAI 2025) — arXiv 2405.13382 ⭐ NEW
-     "VTG-LLM: Integrating Timestamp Knowledge into Video LLMs 
-      for Enhanced Video Temporal Grounding"
-     https://arxiv.org/abs/2405.13382
-     https://github.com/gyxxyg/VTG-LLM
-     用於：Section 1.3 決策 C 背書（one-shot timeline → sparse JSON）
-          Section 3.5 Phase 1 學術依據（timestamp 當 token 學的範式）
-          Section 4.6 Reward A (R_timing) 設計背書
-          Section 5.5 Temporal F1 / mAP 評估範式背書
+[29] Chapter-Llama (Ventura et al., CVPR 2025) — arXiv 2504.00072 ⭐ NEW
+     "Chapter-Llama: Efficient Chaptering in Hour-Long Videos with LLMs"
+     https://arxiv.org/abs/2504.00072
+     https://github.com/lucas-ventura/chapter-llama
+     用於：Section 1.3 決策 C 直接前例（text-level video → LLM timestamp output）
+          Section 3.5 Phase 1 學術依據（與 SimLens 99% 一致：Llama + LoRA + ASR/Caption timestamp 文字 timeline → 輸出 timestamp + 內容）
+          Section 4.6 Reward A 設計背書（text-output timestamp 範式）
+     SimLens 對比：Chapter-Llama 用 8B + 1hr 影片 + chapter title；SimLens 用 3B + 1-3min + per-persona LoRA + persona commentary
 
-[30] MMDuet / VideoLLM Knows When to Speak — arXiv 2411.17991 ⭐ NEW
+[30] Socratic Models (Zeng et al., ICLR 2023) — arXiv 2204.00598 ⭐ NEW
+     "Socratic Models: Composing Zero-Shot Multimodal Reasoning with Language"
+     Google Research / DeepMind
+     https://arxiv.org/abs/2204.00598
+     https://socraticmodels.github.io/
+     用於：Section 1.3 決策 C「all-modality-as-text」哲學祖師爺
+          Section 3.5 Phase 1 Stage A Timeline Script 設計依據
+     核心概念："language-based world-state history" — 將視覺/音訊全部降維為文字，讓 LLM 純在文字域推理
+
+[31] MMDuet / VideoLLM Knows When to Speak — arXiv 2411.17991 ⭐ NEW
      "VideoLLM Knows When to Speak: Enhancing Time-Sensitive Video 
       Comprehension with Video-Text Duet Interaction Format"
      https://arxiv.org/html/2411.17991
-     用於：Section 1.3 決策 C 背書（event-driven sparse prediction）
-          Section 3.5 Phase 1 sparse temporal prediction 直接前例
+     用於：Section 1.3 決策 C event-driven sparse prediction 概念補充背書
 
-[31] MM-When2Speak / Beyond Words — arXiv 2505.14654 ⭐ NEW
+[32] MM-When2Speak / Beyond Words — arXiv 2505.14654 ⭐ NEW
      "Beyond Words: Multimodal LLM Knows When to Speak"
      https://arxiv.org/html/2505.14654v1
-     用於：Section 3.5 Phase 1 multimodal "when to speak" 背書
+     用於：multimodal "when to speak" 概念補充背書
 
 [32] IFEval (Zhou et al., 2023) — arXiv 2311.07911 ⭐ NEW
      "Instruction-Following Evaluation for Large Language Models"
      https://arxiv.org/abs/2311.07911
-     用於：Section 5.2 Group 0 Format Compliance 評估方法論
-          Verifiable instructions 概念背書
+     用於：Section 5.2 Group 0 verifiable instruction 哲學背書
+          支持 SCR + TVR 採用 deterministic 程式可驗證設計
 
 [33] JSONSchemaBench (Geng et al., 2025) — arXiv 2501.10868 ⭐ NEW
      "JSONSchemaBench: A Rigorous Benchmark of Structured Outputs 
@@ -1616,40 +1849,18 @@ C4. Framing Contribution (v4.1 獨有)
      https://arxiv.org/abs/2501.10868
      https://github.com/guidance-ai/jsonschemabench
      用於：Section 3.3 constrained JSON decoding 技術背書
-          Section 5.2 Group 0 JSON-specific 評估方法
+          Section 5.2 Group 0 SCR (Schema Compliance Rate) 直接對應
 
-[34] StructEval — arXiv 2505.20139 ⭐ NEW
-     "StructEval: Benchmarking LLMs' Capabilities to Generate 
-      Structural Outputs"
-     https://arxiv.org/html/2505.20139v1
-     用於：Section 5.2 Group 0 結構化輸出評估補充
-
-[35] SoccerNet (Giancola et al., CVPR 2018) ⭐ NEW
+[34] SoccerNet (Giancola et al., CVPR 2018) ⭐ NEW
      "SoccerNet: A Scalable Dataset for Action Spotting in Soccer Videos"
      https://arxiv.org/abs/1804.04527
-     用於：Section 5.2 Group 1 Temporal F1 / Average-mAP 評估範式
-          tolerance window paradigm
+     用於：Section 4.3 Reward A (R_timing) action spotting saliency 概念背書
 
-[36] VideoIC (Wang et al., ACM MM 2020) ⭐ NEW
-     "VideoIC: A Video Interactive Comments Dataset and Multimodal 
-      Multitask Learning for Comments Generation"
-     https://dl.acm.org/doi/10.1145/3394171.3413890
-     https://github.com/AIM3-RUC/VideoIC
-     用於：Section 5.2 Group 5 Bilibili 彈幕外部錨點資料集
-          Section 5.5 群體爆點識別的弱對齊驗證
-
-[37] Recommending Highlights via DanMaKu (He & Tang, IntelliSys 2017) ⭐ NEW
-     "Recommending highlights in Anime movies: Mining the real-time 
-      user comments DanMaKu"
-     IEEE IntelliSys 2017 (London, UK), IEEE Xplore 2018-03-12
-     https://ieeexplore.ieee.org/document/8324311
-     用於：Section 5.2 Group 5 彈幕密度峰值識別 highlight 的方法背書
-
-[38] MORLAIF (Williams, 2024) — arXiv 2406.07496
+[37] MORLAIF (Williams, 2024) — arXiv 2406.07496
      "Multi-Objective Reinforcement Learning from AI Feedback"
      用於：Section 4.6 multi-aspect reward 學術背書
 
-[39] Bootstrapping with Implicit Rewards (ICLR 2025)
+[38] Bootstrapping with Implicit Rewards (ICLR 2025)
      用於：Section 4.6 Iterative DPO 多輪迭代背書
 ```
 
@@ -1671,9 +1882,9 @@ L1. Post-hoc Framing 而非真實即時模擬 ⭐ v4.1 新增
 L2. No Real-World Persona Behavior Validation
     我們無真實 persona 觀影行為資料集。所有訓練訊號來自合成資料
     (Claude) + LLM-as-Judge (Qwen)，而非真實觀眾行為。
-    Bilibili VideoIC 彈幕僅作為「群體爆點識別」的弱外部錨點，
-    不對應個人 persona 行為。
-    這是領域 gap，不是 SimLens 獨有問題。
+    這是領域 gap，不是 SimLens 獨有問題（SimTube / PersonaLLM 同樣面對）。
+    曾考慮以 Bilibili 彈幕作為群體爆點外部錨點驗證，但因彈幕為匿名群體訊號，
+    無法對應個人 persona 行為，加上 Bilibili API 隱私保護與法律風險，已移除。
 
 L3. Distillation Bias
     Phase 1 用 Claude 當 teacher，可能繼承 Claude 的偏誤
@@ -1681,14 +1892,14 @@ L3. Distillation Bias
     Phase 2 RLAIF 部分校正，但無法完全消除。
 
 L4. LLM-as-Judge Limitations
-    Qwen3-32B 與 GPT-4 一致性 ~ 85-90%。
-    緩解：Multi-judge ensemble + GPT-4 spot-check。
+    SimLens 採用單一 Qwen3-32B-Q4 作為 frozen judge（無 multi-judge ensemble、
+    無 GPT-4 spot-check）。Qwen3-32B 與 GPT-4 一致性約 85-90%（社群報告），
+    這個 ~10-15% 差距可能引入評分偏誤。Future work 可加入 multi-judge ensemble
+    或 GPT-4 spot-check 強化評分可靠度。
 
 L5. English-Only & Cultural Bias
     8 個 persona 都是英文 + 美國/亞洲文化導向。
     中文 / 跨文化擴展為 future work。
-    （但 Bilibili 彈幕外部錨點是中文，這是有意的「群體層級驗證」設計，
-      與 persona 個人行為層級分離。）
 
 L6. Length-Generalization Constraint
     SimLens scope 嚴格鎖定在 1–3 分鐘 YouTube 短影片，10 秒固定分段。
@@ -1706,7 +1917,7 @@ L7. Sparse JSON Format Brittleness ⭐ v4.1 新增
 L8. List-Level Reward 設計依賴 persona expected_comment_count_range
     R_frequency_match 依賴我們設定的 expected range，
     沒有真實資料驗證這個假設。
-    這是 v2.0 reaction_frequency 問題的延續。
+    這是 persona-based simulation 領域的共通限制。
 
 L9. Two-Stage Pipeline Choice
     SimLens 採用 SFT + DPO 兩階段，未採用單階段方法（如 ORPO、DPO+NLL）。
@@ -1719,6 +1930,32 @@ L10. Self-Rewarding 不適用於 SimLens 規模
     SimLens 採用 external judge (Qwen3-32B-Q4) 繞開此限制。
     Future work：當 SimLens base model 升級到 7B+ 時，
     可探索切到 self-rewarding 範式以省去 external judge。
+
+L11. Persona Specification from PersonaChat 8K Sampling Constraint
+    SimLens 採用 PersonaChat 8K + cosine similarity + MMR 取樣 8 個 personas
+    （§2.3）。雖然此範式重現 SimTube (IUI 2025) 並排除手編偏誤，但 PersonaChat
+    本身為 2018 年資料集，可能未涵蓋最新世代的觀眾類型（如 TikTok/Shorts 新興
+    族群）。Future work 可比較 PersonaChat vs PersonaHub (Tencent 1B) vs
+    OpenCharacter 多源取樣的 persona 多樣性影響。
+
+L12. Teacher Timestamp Fidelity Assumption ⭐ v4.1 新增
+    SimLens Phase 1 蒸餾依賴一個關鍵假設：Claude-3.5 Sonnet 在 zero-shot 設定下
+    能正確產生「輸入 timestamp ↔ 輸出 timestamp」的對應關係（即輸出的 [00:15]
+    確實對應輸入 timeline 中 00:15 的事件）。
+
+    此能力**已被 Chapter-Llama (CVPR 2025) 在 LoRA-tuned Llama-3.1-8B 上驗證**
+    （tIoU=71.8 on VidChapters-7M），但**未在 zero-shot Claude / GPT-4o 上正式
+    驗證**（Chapter-Llama 論文未做 zero-shot baseline 的 timestamp fidelity 分析）。
+
+    緩解策略：
+      1. Week 3 Day 1 跑 Pre-flight Sanity Check（5 部 × 8 personas = 40 個
+         sparse list，人工檢查 ~50 個 timestamp 對應關係，通過標準 ≥ 80%）
+      2. 若 sanity check < 60%，fallback 到 GPT-4o 當 teacher
+         （GPT-4o 在 IFEval 上 instruction following 表現更強）
+      3. 將 sanity check 通過率寫進論文 Section 4.1（Experimental Setup 透明度）
+
+    Future work 可正式評估 zero-shot LLM 在 「text-level video commentary
+    generation with timestamp output」 任務上的 fidelity benchmark。
 ```
 
 ---
@@ -1748,16 +1985,15 @@ F5. Shorts (≤60s) 擴展
 
 F6. Long-form Video Support (> 3min)
     結合 hierarchical summarization 處理 5+ 分鐘影片
-    或用 VTG-LLM 的 slot-based token compression
+    或借鏡 Chapter-Llama 的 speech-guided frame selection 處理超長影片
     處理 timeline script 超過 4096 max_seq_length 的問題
 
 F7. Real-time Director Mode（移除 post-hoc 限制）
     結合 streaming video LLM (e.g., VideoLLM-online, arXiv 2406.11816)
     從事後反思 → 真實即時觀影反應模擬
 
-F8. Cumulative vs One-shot Hybrid
-    保留 v4.1 one-shot 為主流，但對於極長影片切窗 + cumulative reflection
-    雙模式架構
+F8. Sliding-Window for Very Long Videos
+    對於 > 5min 影片，採滑動窗口切片 + 多次 one-shot reflection 後合併
 ```
 
 ---
@@ -1767,15 +2003,16 @@ F8. Cumulative vs One-shot Hybrid
 ## 本週可立即開始
 
 ```
-□ Day 1: 確認硬體（至少 24GB VRAM）
+□ Day 1: 確認硬體（最低門檻 24GB VRAM；本研究實際用 RTX 5090 32GB）
 □ Day 2: 安裝環境（LLaMA-Factory / TRL / Ollama / Outlines）
 □ Day 3: Pull Llama-3.2-3B + Qwen3-32B Q4 + LLaVA-NeXT
-□ Day 4: 把 8 個 persona YAML 確認下來（含 expected_comment_count_range）
+□ Day 4: 下載 PersonaChat 8K (Hugging Face: bavard/personachat_truecased)
          定義 sparse JSON schema（用於 constrained decoding）
 □ Day 5: 用 YouTube API 收集 5-10 部測試影片（驗證 pipeline）
+         提取 keywords，跑 §2.3 PersonaChat → top-8 取樣腳本
 □ Day 6-7: 跑通 Whisper + LLaVA + UMaT-inspired Timeline Script pipeline
             對 1 部影片試跑：Claude 一次餵入 → 收 sparse JSON
-            驗證 Format Compliance（手動檢查 8 個 persona 的輸出）
+            驗證 Format Compliance（手動檢查 8 個 personas 的輸出）
 ```
 
 ## 投稿目標確認
@@ -1786,42 +2023,34 @@ F8. Cumulative vs One-shot Hybrid
 保底：智慧創新大賞 2026 + GitHub 開源 + Hugging Face release
 ```
 
-## 與 v2.0 的差異總結
+## SimLens 核心設計清單
 
 ```
-v2.0（cumulative segment-level）→ v4.1（one-shot post-hoc sparse JSON）
-
-砍掉：
-✗ Cumulative narrative 設計（每段重餵）
-✗ 顯式 None 標籤（改用空陣列隱式編碼）
-✗ Cell-level reward（改用 list-level reward）
-✗ 6 個 reward（精簡為 4 個 list-level reward）
-✗ 「即時模擬」聲稱（改為 post-hoc commentary）
-
-新增：
-+ 全局 Timeline Script（一次餵入）
+架構：
++ 全局 Timeline Script（UMaT-inspired，一次餵入）
 + Sparse JSON 輸出格式（[{timestamp, comment}, ...]）
 + Constrained JSON decoding（Outlines/XGrammar）
-+ Format Compliance Rate（FCR）評估群（Group 0）
-+ Temporal F1@5s / Average-mAP 時序定位指標（Tier 1）
-+ List-level metrics（Tier 3：Frequency Match / Coverage / Empty-List Acc / Persona Diff）
-+ Bilibili VideoIC 彈幕外部錨點（Group 5 sanity check）
-+ R_timing / R_frequency_match / R_coverage_diversity 三個新 reward
 
-保留：
-✓ UMaT-inspired 時序對齊
-✓ Whisper + LLaVA-NeXT 感知層
-✓ Llama-3.2-3B + Multi-LoRA per persona
-✓ SFT + DPO 兩階段訓練
-✓ Qwen3-32B 本地 judge + GPT-4 spot-check
-✓ 25 人 Likert human eval
-✓ Stage C 報告生成（同一個 Llama-3B base）
+評估體系：
++ Group 0: Schema Compliance Rate + Timestamp Validity Rate
++ Group 2: Tier 2 內容指標（PersonaGym + Coherence + Engagingness）
++ Group 3: List-level metrics (reward-independent)：TAS (F1@5s vs Teacher) / Persona Content Distinctiveness
++ Group 4: 25 人 Likert human eval
 
-調整：
-↻ Reward 從 6 個 cell-level → 4 個 list-level
-↻ 訓練資料從 ~9,600 cells → 800 sparse lists
-↻ Claude API 成本從 $115 → $12（下降 90%）
-↻ Per-video API call 從 96 → 8（下降 92%）
-↻ Per-video latency 從 ~360s → ~24s（下降 93%）
-↻ Ablation 從 8 組 → 10 組（新增 v2.0 vs v4.1 架構對比 A10）
+訓練設計：
++ Phase 1 SFT：Claude 蒸餾 + LoRA per persona（8 個獨立 adapter）
++ Phase 2 DPO：4-aspect list-level reward
+  - R_timing (30%)：時機合理性
+  - R_frequency_match (25%)：list 長度匹配 persona 活躍度
+  - R_content_quality (25%)：persona 一致 + 局部相關
+  - R_coverage_diversity (20%)：timestamp 分布均勻
+
+定位：
+✓ Post-hoc commentary generation（事後反思評論）
+✗ 不 claim 即時觀影行為模擬
+
+成本：
+- Claude API：$12 USD（800 calls × $0.015）
+- 雲端 GPU：$30-60 USD
+- 人類評估：$300-500 USD（標準）
 ```
