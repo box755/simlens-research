@@ -1123,6 +1123,186 @@ Jaccard timestamps 會把這個合理行為錯判為「LoRA 失敗」。
 
 #### Group 1+: Real-World Anchoring（外部錨點，打破封閉迴路）⭐ v4.2 新增（P0）
 
+##### 5.2.5.0 評估 Pipeline：從模型輸出到 Anchor 數字（v4.2.3 補完）
+
+> 本小節明確說明 8-LoRA SimLens / baseline 模型如何被「跑」、輸出如何被「聚合」、
+> 最終如何餵進 Anchor A 與 Anchor B 指標。Reviewer 第一個會問「inference protocol」，
+> 此處一次答完。
+
+###### Step 1：Inference — 對 30 test 影片 × 8 personas 跑出 240 個 sparse JSON
+
+對每個受評估模型（Llama-3B zs / GPT-4o-mini zs / Claude zs / SimLens-Phase1 / SimLens-Full），
+跑下列 inference loop：
+
+```python
+def run_inference(model_name: str, test_30: list[Video]):
+    """每個模型對 30 test 影片 × 8 personas = 240 次 generate call.
+
+    輸出格式：data/eval/{model_name}_outputs.jsonl
+      每行一個 record：
+        {
+          "video_id": "...", "persona_id": "P3",
+          "raw_output": "...",          # 模型原始輸出
+          "scr_ok": True,               # Group 0 SCR
+          "tvr_ok": True,               # Group 0 TVR
+          "parsed": [
+            {"timestamp": "00:25", "comment": "..."},
+            ...
+          ]
+        }
+    """
+    for video in test_30:
+        timeline = load_timeline_script(video.id)
+        for persona_id in ["P1", "P2", ..., "P8"]:
+            persona_yaml = PERSONAS[persona_id]
+            prompt = format_simlens_prompt(timeline, persona_yaml)
+
+            # ⚠️ Persona conditioning 點：不同模型差別只在這裡
+            if model_name == "simlens-phase1":
+                # SimLens 8 個 per-persona LoRA：載對應 adapter
+                model.set_adapter(persona_id)   # PEFT switch_adapter, 毫秒級
+                output = model.generate(prompt, constrained_json_decoding=True)
+            elif model_name in ("llama-zs", "gpt-mini", "claude"):
+                # Baselines 沒 LoRA：persona 已經在 prompt 中注入
+                output = model_or_api.generate(prompt)
+            elif model_name == "simlens-full":
+                # Phase 2 後同樣 8 LoRA + DPO updates
+                model.set_adapter(persona_id)
+                output = model.generate(prompt, constrained_json_decoding=True)
+
+            scr_ok, parsed, _ = schema_compliant(output)
+            tvr_ok = timestamp_valid(parsed, video.duration_sec) if scr_ok else False
+            save_record(video.id, persona_id, output, scr_ok, tvr_ok, parsed)
+```
+
+**重點**：
+- 4 個被評估模型 × 30 影片 × 8 personas = **每模型 240 個 sparse JSON**
+- 4 個模型共產 **960 個 sparse JSON 輸出**
+- 8-LoRA SimLens 推理時 PEFT `set_adapter(persona_id)` **毫秒級切換**，不是每次重新 load
+- Baselines 用同樣 prompt（persona YAML 注入），確保跟 SimLens 公平比較
+
+###### Step 2：Group 0（SCR / TVR）— 一行 aggregate
+
+```python
+records = load_records(model_name)       # 240 records
+scr_rate = sum(r.scr_ok for r in records) / len(records)
+tvr_rate = sum(r.tvr_ok for r in records) / sum(r.scr_ok for r in records)
+fcr = min(scr_rate, tvr_rate)
+# → Table 2 一行：(scr_rate, tvr_rate, fcr)
+```
+
+###### Step 3：Anchor A — 整體 corpus 分布比對
+
+**聚合方式**：把 240 個 sparse JSON 裡所有 comment 文字攤平合併，當「該模型整體寫的留言生態」。
+
+```python
+def aggregate_anchor_a_corpus(records: list[Record]) -> list[str]:
+    """從 240 個 sparse JSON 抽出所有 comment 文字，合一個 list."""
+    corpus = []
+    for r in records:
+        if r.scr_ok:
+            for entry in r.parsed:
+                corpus.append(entry["comment"])
+    return corpus
+    # 預期 1,000-2,000 條 comments per model（每 sparse list 平均 4-7 條）
+
+# Anchor A 3 個指標：
+simlens_corpus = aggregate_anchor_a_corpus(load_records("simlens-phase1"))
+hf_corpus      = load_hf_187k()           # Anchor A ground truth
+
+length_ks_value           = length_ks(simlens_corpus, hf_corpus)
+sentiment_w_value         = sentiment_wasserstein(simlens_corpus, hf_corpus)
+embedding_frechet_value   = embedding_frechet(simlens_corpus, hf_corpus,
+                                              embed_fn=openai_embed_3_small,
+                                              sample_size=5000)
+# → Table 6 三個 Anchor A 欄位
+```
+
+**特性：**
+- 不分 persona、不分 video — 整個模型輸出當「一個整體 corpus」
+- 跟 HF 187K real YouTube comments 比 3 個 deterministic 分布距離
+- 比較單位：corpus vs corpus，無 LLM judge
+
+###### Step 4：Anchor B — Per-Video 8-Persona Timestamp Union vs 真實 Mentions
+
+**聚合方式**：對每部 test 影片，把 8 個 persona 的 timestamps 合起來（dedup），跟真實觀眾 mentions 比。
+
+```python
+def aggregate_anchor_b_timestamps(
+    records: list[Record], video_id: str
+) -> list[float]:
+    """同一部影片下，8 個 persona 的 timestamps 聯集 (sorted, deduped)."""
+    timestamps = []
+    for r in records:
+        if r.video_id == video_id and r.scr_ok:
+            for entry in r.parsed:
+                ts_sec = parse_timestamp(entry["timestamp"])  # "01:42" → 102.0
+                timestamps.append(ts_sec)
+    return sorted(set(timestamps))
+    # 預期 5-15 個 unique timestamps per video（8 personas 部分重疊）
+
+# 對每部 test 影片計算 hotspot recall/precision：
+per_video_results = []
+for video in test_30:
+    # (a) 從真實觀眾 mentions 抽 hotspot
+    real_mentions = load_mentions(video.id)        # 真實觀眾在留言中標的 timestamps
+    hotspots = kde_peaks(
+        real_mentions, video.duration_sec,
+        bandwidth=3, min_separation=5,
+        top_k=ceil(video.duration_sec / 30),       # 1-3 min 影片約 2-6 hotspot
+    )
+    # (b) 模型 8-persona 預測 timestamps 聯集
+    predicted_union = aggregate_anchor_b_timestamps(
+        load_records("simlens-phase1"), video.id
+    )
+    # (c) 對齊：±5s tolerance greedy match
+    recall, precision = per_video_hotspot_recall_precision(
+        hotspots, predicted_union, tolerance_sec=5
+    )
+    per_video_results.append((recall, precision))
+
+# 30 部影片取平均：
+mean_recall    = mean([r for r, _ in per_video_results])    # → Table 6 Hotspot Recall 欄
+mean_precision = mean([p for _, p in per_video_results])    # → Table 6 Hotspot Precision 欄
+```
+
+**特性：**
+- Per-video 比對 — 對影片 X 的預測對齊影片 X 真實 hotspot
+- 8 個 persona 聯集 — 因為真實 mentions 沒 persona 標籤，模型端對應聚合
+- ±5s tolerance — SoccerNet (CVPR 2018) action spotting 範式
+- 評估強 claim：「模型在影片 X 的時序判斷對齊真實人類觀眾」
+
+###### Step 5：Multi-Judge Spot-Check（Diagnostic D2，可選）
+
+從 240 records 隨機抽 80 個（10%），用 Qwen3-32B-Q4 + GPT-4o-mini 平行評
+Persona Consistency / Linguistic Habits，計算 Cohen's κ ≥ 0.6 確認 single-judge 可靠。
+詳見 §5.2.7 D2。
+
+##### 5.2.5.1 4 個模型 inference 數量總表
+
+| 模型 | LoRA | Persona 注入方式 | 推理次數 | 輸出 |
+|---|---|---|---|---|
+| Llama-3B zero-shot | 無 | Prompt | 30×8 = 240 | `data/eval/llama_zs.jsonl` |
+| GPT-4o-mini zero-shot | 無（API）| Prompt | 30×8 = 240 | `data/eval/gpt_mini.jsonl` |
+| Claude Sonnet 4.5 zero-shot | 無（API）| Prompt | 30×8 = 240 | `data/eval/claude.jsonl` |
+| **SimLens Phase 1 (SFT)** | **8 個 per-persona LoRA** | **載對應 LoRA** | 30×8 = 240 | `data/eval/simlens_p1.jsonl` |
+| **SimLens Full (SFT+DPO)** | **8 個 per-persona LoRA** | **載對應 LoRA** | 30×8 = 240 | `data/eval/simlens_full.jsonl` |
+
+→ 5 個模型 × 240 = 1,200 個 sparse JSON 輸出。每個模型相同 input + 同樣聚合方式 → Table 6 公平比較。
+
+##### 5.2.5.2 Anchor A vs Anchor B 聚合層級對照
+
+| 維度 | Anchor A | Anchor B |
+|---|---|---|
+| 比較單位 | 整個模型 corpus vs HF 187K corpus | 同部影片內 8-persona union vs 真實 mentions |
+| 聚合層級 | corpus level（不分 video / persona）| per-video level（30 部分別算後取平均）|
+| 輸出指標數 | 3（Length KS / Sentiment W / Frechet） | 2（Hotspot Recall / Precision @ ±5s） |
+| 為什麼要這樣聚合 | 量「整體留言寫作風格」與真實生態的距離 | 量「per-video 時序判斷」對齊真實觀眾爆點 |
+| Ground truth | HF 187K real YT comments | 30 部 test 影片的真實 timestamp mentions |
+| 8 LoRA 影響 | 所有 LoRA 輸出 concat 成同一 corpus | 同部影片 8 LoRA timestamps 聯集 |
+
+---
+
 ```python
 # 設計目的：
 #   v4.1 整個訓練 + 評估 pipeline 中，訊號鏈為：
