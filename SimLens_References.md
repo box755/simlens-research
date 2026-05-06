@@ -1,7 +1,8 @@
 # SimLens 研究計畫引用文獻清單
-> 共 38 篇引用文獻，涵蓋系統架構、訓練方法、評估指標、設計決策背書、text-level video understanding 前例、結構化輸出評估、persona 取樣演算法、Socratic 多模態哲學等面向
-> 對應研究計畫：SimLens_Research_Plan_v4.1.md
-> 編號 [20] / [38] / [39] 為 v4.1 演進過程移除的條目（multi-judge ensemble 與 Bilibili 彈幕外部錨點驗證），保留斷號以維持其他引用編號穩定性
+> 共 42 篇引用文獻（含 v4.2.2 新增 [38] [39] [42]），涵蓋系統架構、訓練方法、評估指標、設計決策背書、text-level video understanding 前例、結構化輸出評估、persona 取樣演算法、Socratic 多模態哲學、彈幕觀眾反應訊號、分布距離 metrics 等面向
+> 對應研究計畫：SimLens_Research_Plan_v4.2.md (v4.2.2)
+> 編號 [20] 為 v4.1 演進過程移除的 multi-judge ensemble 條目（v4.2 已用 D2 spot-check 替代），保留斷號維持引用穩定
+> [38] [39] 為 v4.2.2 復活的彈幕論文引用（v4.1 → v4.2 → v4.2.1 曾被移除，v4.2.2 改採 Bilibili popular distribution-level 後重新需要學術背書）
 
 ---
 
@@ -844,6 +845,69 @@ SimLens §2.3 Persona 取樣流程的關鍵步驟：先用 cosine similarity 從
 SIGIR 1998 經典論文，提出 Maximal Marginal Relevance (MMR) 演算法，公式為：
 `MMR = argmax [λ × Sim(Di, Q) - (1-λ) × max Sim(Di, Dj)]`
 在資訊檢索領域用於多樣化 ranking 結果，避免 top-K 結果過於相似。lambda 參數平衡相關性（與 query 的相似度）與多樣性（與已選結果的差異）。是 NLP / IR 領域 diversity-aware selection 的標準演算法，引用次數超過 6000+。
+
+---
+
+## L'. 彈幕觀眾反應訊號 + 分布距離 metrics（v4.2.2 復活/新增）
+
+### [42] Frechet Inception Distance (FID)
+**完整標題**：GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium
+
+**作者**：Heusel, Martin; Ramsauer, Hubert; Unterthiner, Thomas; Nessler, Bernhard; Hochreiter, Sepp
+
+**發表場域 / 年份**：NeurIPS 2017
+
+**arXiv 編號**：`1706.08500`
+
+**網址**：[https://arxiv.org/abs/1706.08500](https://arxiv.org/abs/1706.08500)
+
+**類型**：v4.2.2 Anchor A 第 4 個指標 Embedding Frechet Distance 的 originating paper
+
+**在 SimLens v4.2.2 中的引用用途**：
+SimLens v4.2.2 §5.2.5 Anchor A 的「Embedding Frechet Distance」直接套用此 paper 的 Frechet Distance formula：FD = ||μ_S − μ_R||² + Tr(Σ_S + Σ_R − 2(Σ_S Σ_R)^½)。原本用於圖像生成評估（在 Inception-v3 feature space），SimLens 改用 OpenAI text-embedding-3-small feature space，套同樣 Frechet 公式比較 SimLens 留言生態 vs 真實 YouTube 留言生態（HF 187K corpus）。屬於 FID 標準跨模態變體（已有 Frechet BERT/CLIP/Audio/Video Distance 多種 variant 在文獻中使用）。
+
+**摘要**：
+NeurIPS 2017 引入 Frechet Inception Distance (FID) 作為 GAN 評估指標。將兩個圖像分布（real vs generated）各自用 Inception-v3 抽 feature，視為兩個 multivariate Gaussian，計算 W2 距離。FID 後續成為圖像生成領域標準評估指標，跨模態變體（Frechet Audio Distance, Frechet Video Distance, Frechet BERT Distance）廣為使用。引用 35,000+ 次。
+
+---
+
+## L''. 彈幕觀眾反應訊號（v4.2.2 復活）
+
+### [38] DanmakuTPPBench
+**完整標題**：DanmakuTPPBench: A Multi-modal Benchmark for Temporal Point Process Modeling and Understanding
+
+**作者**：Jiang, Yue; Li, Jichu; Liu, Yang; Yang, Dingkang; Zhou, Feng; Kong, Quyu
+
+**發表場域 / 年份**：NeurIPS 2025
+
+**arXiv 編號**：`2505.18411`
+
+**網址**：[https://arxiv.org/abs/2505.18411](https://arxiv.org/abs/2505.18411)
+
+**類型**：v4.2.2 Anchor B-2 學術背書 — 彈幕為 timestamp-rich 觀眾反應事件的 multi-modal benchmark
+
+**在 SimLens v4.2.2 中的引用用途**：
+SimLens v4.2.2 §5.2.5 Anchor B-2（Bilibili popular 短片彈幕分布級錨點）的學術依據。DanmakuTPPBench 將彈幕視為「naturally form multi-modal events annotated with precise timestamps」的時序事件序列，提供 SimLens 將彈幕 timestamp 視為「真實人類在影片時間軸上自發標記反應時點」的標準學術範式。NeurIPS 2025 級別 venue 提供 cross-platform temporal anchor 的可信度。
+
+**摘要**：
+首個將 Bilibili 彈幕資料集化為 multi-modal Temporal Point Process (TPP) benchmark 的工作。每條彈幕被視為一個時序事件，含精確 timestamp、文本內容、對應影片畫面三個模態。提供 dataset、benchmark suite、TPP modeling 多模態方法評估。為「彈幕 = 觀眾在時間軸上的反應事件分布」這個假設提供 NeurIPS 級別的學術正當性。
+
+---
+
+### [39] Plot-Aligned Danmaku & Viewer Engagement
+**完整標題**：Time versus timing in social cognition: How concurrent viewer cues and plot-aligned Danmaku affect narrative outcomes on online video platforms
+
+**發表場域 / 年份**：Computers in Human Behavior (ScienceDirect, 2025)
+
+**網址**：[https://www.sciencedirect.com/science/article/pii/S0747563225001955](https://www.sciencedirect.com/science/article/pii/S0747563225001955)
+
+**類型**：v4.2.2 Anchor B-2 補充背書 — 彈幕與觀眾敘事認知 / 反應時點關聯
+
+**在 SimLens v4.2.2 中的引用用途**：
+進一步背書「彈幕反映觀眾反應時點」的論點。本文實驗顯示 plot-aligned 彈幕（即觀眾在劇情關鍵點留的彈幕）顯著影響 narrative outcomes 與 perceived social presence，間接證明彈幕 timestamp 集中分布處 = 觀眾普遍認為值得反應的關鍵時點 = 真實 reaction hotspots。
+
+**摘要**：
+透過實驗操弄發現顯示過去（vs 同時）觀眾線索 + 劇情對齊（vs 隨機時點）的彈幕能提升 perceived social presence，進而促進 viewer engagement。對 SimLens 的意義：彈幕並非隨機分布，而是與影片內容事件對齊的反應時點訊號。
 
 ---
 

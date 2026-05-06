@@ -1,0 +1,161 @@
+"""Generate short display labels for the 8 sampled personas (demo / UI only).
+
+Adds a `display_label` field to personas_with_activity.yaml. The label is for
+human-readable identification in demos, reports, and the Stage C cross-audience
+comparison output. The training pipeline still uses P1..P8 IDs and the full
+PersonaChat description — labels are NEVER used as model input.
+
+Usage:
+  python scripts/persona/generate_display_labels.py \
+    --in  data/personas/personas_with_activity.yaml \
+    --out data/personas/personas_with_activity.yaml   # in-place by default
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from utils.env import load_env
+
+load_env()
+
+
+PROMPT_TEMPLATE = """Given this PersonaChat self-description, generate a short (3-6 word) display label that captures the persona's most distinctive trait.
+
+The label is for UI / demo display only — it must be:
+- 3 to 6 words, English
+- Title Case (e.g. "Beauty YouTuber")
+- Capture the most identifiable hobby / role / lifestyle
+- NOT include a personal name (no "Alice" / "John")
+- NOT mention age or gender
+- Stable: same description should always yield same label
+
+Persona description:
+{description}
+
+Output ONLY a JSON object: {{"label": "<3-6 word label>"}}
+"""
+
+
+def call_claude(prompt: str, model: str = "claude-sonnet-4-5-20250929") -> str:
+    from anthropic import Anthropic  # type: ignore
+
+    client = Anthropic()
+    msg = client.messages.create(
+        model=model,
+        max_tokens=100,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return msg.content[0].text
+
+
+def parse_existing_yaml(text: str) -> list[dict]:
+    """Re-parse the existing yaml; preserves all current fields per persona."""
+    out: list[dict] = []
+    cur: dict | None = None
+    desc_lines: list[str] | None = None
+    for raw in text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        m = re.match(r"^(P\d+):\s*$", raw)
+        if m:
+            if cur:
+                if desc_lines is not None:
+                    cur["description"] = "\n".join(desc_lines).rstrip()
+                out.append(cur)
+            cur = {"id": m.group(1)}
+            desc_lines = None
+            continue
+        if cur is None:
+            continue
+        if raw.startswith("  source_idx:"):
+            cur["source_idx"] = int(raw.split(":", 1)[1].strip())
+        elif raw.startswith("  query_similarity:"):
+            cur["query_similarity"] = float(raw.split(":", 1)[1].strip())
+        elif raw.startswith("  description:"):
+            desc_lines = []
+        elif raw.startswith("  expected_comment_count_range:"):
+            if desc_lines is not None:
+                cur["description"] = "\n".join(desc_lines).rstrip()
+                desc_lines = None
+            rest = raw.split(":", 1)[1].strip().split("#")[0].strip()
+            cur["expected_comment_count_range"] = json.loads(rest)
+        elif raw.startswith("  activity_rationale:"):
+            rest = raw.split(":", 1)[1].strip()
+            cur["activity_rationale"] = json.loads(rest)
+        elif raw.startswith("  display_label:"):
+            rest = raw.split(":", 1)[1].strip()
+            cur["display_label"] = json.loads(rest)
+        elif raw.startswith("    ") and desc_lines is not None:
+            desc_lines.append(raw[4:])
+    if cur:
+        if desc_lines is not None:
+            cur["description"] = "\n".join(desc_lines).rstrip()
+        out.append(cur)
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--in", dest="inp", required=True)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--model", default="claude-sonnet-4-5-20250929")
+    ap.add_argument("--force", action="store_true",
+                    help="regenerate labels even if already present")
+    args = ap.parse_args()
+
+    if "ANTHROPIC_API_KEY" not in os.environ:
+        print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
+        sys.exit(2)
+
+    personas = parse_existing_yaml(Path(args.inp).read_text())
+    print(f"Loaded {len(personas)} personas from {args.inp}")
+
+    for p in personas:
+        if not args.force and p.get("display_label"):
+            print(f"  {p['id']}: existing label kept ({p['display_label']!r})")
+            continue
+        prompt = PROMPT_TEMPLATE.format(description=p["description"])
+        raw = call_claude(prompt, model=args.model).strip()
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not m:
+            raise RuntimeError(f"{p['id']}: no JSON found in {raw!r}")
+        obj = json.loads(m.group(0))
+        p["display_label"] = obj["label"].strip()
+        print(f"  {p['id']}: {p['display_label']!r}")
+
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Auto-generated by claude_estimate_activity.py + generate_display_labels.py",
+        "# DO NOT hand-edit. Re-generate via the scripts.",
+        f"# Activity estimator + label generator: {args.model}",
+        "#",
+        "# display_label is for UI / demo / report-generation display ONLY.",
+        "# Training & evaluation pipeline uses P1..P8 IDs and the full description.",
+        "",
+    ]
+    for p in personas:
+        lines.append(f"{p['id']}:")
+        lines.append(f"  source_idx: {p['source_idx']}")
+        lines.append(f"  query_similarity: {p['query_similarity']:.4f}")
+        lines.append(f"  display_label: {json.dumps(p['display_label'])}")
+        lines.append(f"  description: |")
+        for s in p["description"].split("\n"):
+            lines.append(f"    {s}")
+        lo, hi = p["expected_comment_count_range"]
+        lines.append(f"  expected_comment_count_range: [{lo}, {hi}]  # per 2-min baseline")
+        lines.append(f"  activity_rationale: {json.dumps(p['activity_rationale'])}")
+        lines.append("")
+    out_path.write_text("\n".join(lines))
+    print(f"\nWrote {out_path}")
+
+
+if __name__ == "__main__":
+    main()

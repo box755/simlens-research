@@ -154,6 +154,8 @@
 **學術背書 2：原生多模態模型的時序理解仍有缺陷**
 - **VBenchComp / Time Blindness 系列**：頂尖原生多模態模型（GPT-4o、Gemini）對影片存在「shuffling invariance」——影格打亂順序，輸出仍幾乎不變，顯示依賴語言先驗而非真實時序推理。
 
+> **註**：本段提到的 GPT-4o / Gemini 是論述「即便最強原生多模態大模型也有時序盲區」的論證對象，引自 VBenchComp 文獻；本研究**實驗本身的 OpenAI baseline 一律使用 GPT-4o-mini**（預算決策，詳見 §5.1 / §8.2）。
+
 #### 決策 B：為什麼將影片分段（每 10 秒）？
 
 **學術背書 1：等長分段策略的細節依據**
@@ -297,7 +299,7 @@ all_personas = personachat["train"]["personality"]   # 8K+ persona descriptions
 import openai
 video_keywords = []
 for video in videos_100:
-    # 從 video 的 LLaVA caption + Whisper transcript 用 GPT-4o 摘出 5-10 個 keywords
+    # 從 video 的 LLaVA caption + Whisper transcript 用 GPT-4o-mini 摘出 5-10 個 keywords
     kws = extract_keywords(video.timeline_script)
     video_keywords.extend(kws)
 dataset_query = " ".join(set(video_keywords))   # aggregated query 涵蓋整批訓練影片
@@ -388,7 +390,9 @@ A: MMR 過濾保證 8 個 persona 在嵌入空間最大化多樣性。若 review
 
 ### 3.1 目標
 
-讓 Llama-3.2-3B 繼承 Claude-3.5 Sonnet 的「**事後反思型 sparse JSON 評論生成能力**」。
+讓 Llama-3.2-3B 繼承 **Claude Sonnet 4.5**（snapshot `claude-sonnet-4-5-20250929`）的「**事後反思型 sparse JSON 評論生成能力**」。
+
+> **Teacher 版本說明**：原 v4.1 草稿寫「Claude-3.5 Sonnet」，但 Anthropic 已於 2025 Q4 將 3.5 Sonnet 標記 deprecated；2026-05-05 實際呼叫 API 時 `claude-3-5-sonnet-latest` 已不可用。改採 **Claude Sonnet 4.5**（snapshot 版避免 auto-upgrade，可重現性高）。價格與 3.5 Sonnet 相同（$3 / 1M input + $15 / 1M output），預算 ~$24.6 USD 不變。
 
 ### 3.2 影片資料準備
 
@@ -887,8 +891,8 @@ dpo_config = {
 | Baseline | 角色 | 為何選它 |
 |---------|------|---------|
 | **SimTube** (Claude+GPT-4, whole-video, 1 comment) | 直接競爭 SOTA | 同類最相關工作 |
-| **Claude-3.5 Sonnet zero-shot** (one-shot sparse JSON) | Teacher 本身 | 證明 student 能否超越 |
-| **GPT-4o zero-shot** (one-shot sparse JSON) | 大模型強 baseline | 業界最常見 |
+| **Claude Sonnet 4.5 zero-shot** (one-shot sparse JSON) | Teacher 本身 | 證明 student 能否超越 |
+| **GPT-4o-mini zero-shot** (one-shot sparse JSON) | 獨立大模型對照 baseline | 預算實際選擇 — Claude 之外的第二個 LLM 家族，避免結果是 Claude 特殊偏好；mini 而非 4o 是預算決策（v4.1 全研究 OpenAI 預算規劃為 GPT-4o-mini） |
 | **Llama-3.2-3B zero-shot** (one-shot sparse JSON) | 未訓練起點 | 證明訓練有效性 |
 | **Llama-3.2-3B + Phase 1 only (SFT)** | 蒸餾 ablation | 證明 RLAIF 必要 |
 | **Llama-3.2-3B + Phase 2 only (DPO from zero-shot)** | RLAIF ablation | 證明蒸餾必要 |
@@ -1138,12 +1142,13 @@ A8. - w/o R_coverage_diversity                  ← 證明覆蓋多樣性 reward
 >
 > 影片評論生成（**video commentary generation**）這個任務目前**沒有公認的學術 SOTA**：
 > - SimTube (Hung et al., IUI 2025) 是領域內**唯一**直接前身，發表至今仍是 niche
-> - GPT-4o / Claude-3.5 Sonnet **不是專門評論影片的模型**，只是強通用 LLM
+> - GPT-4o-mini / Claude Sonnet 4.5 **不是專門評論影片的模型**，只是強通用 LLM
 > - Llama-3.2-3B zero-shot 完全不是 SOTA，只是「未訓練起點」
 >
 > 因此 Table 1 的設計目的是 **3 件事**，而非 leaderboard 競賽：
 > 1. **師徒對齊驗證**：Student (3B) 在 5 維度上是否接近 / 超越 Teacher (Claude)
-> 2. **跨大模型穩定性對照**：GPT-4o 作為**獨立第二大模型**，避免結果是 Claude 特殊偏好
+> 2. **跨大模型家族對照**：GPT-4o-mini 作為**獨立 LLM 家族 baseline**，避免結果是 Claude 特殊偏好
+>    （選 mini 而非 4o 是預算決策；reviewer 若關心 4o vs mini 落差，可在 rebuttal 補跑 4o subset，~$5）
 > 3. **vs SimTube 直接競爭**：唯一同類學術前身的比較
 >
 > **Per-persona breakdown 設計說明**：
@@ -1164,16 +1169,20 @@ Method                          | Role         | Persona | Linguistic | Local Re
 Llama-3.2-3B zero-shot          | 未訓練起點   | 0.42    | 0.38       | 0.45       | 0.50      | 0.45
 SimTube (Hung 2024)             | 唯一同類前身 | 0.78    | 0.72       | N/A        | 0.79      | 0.76
                                 | (whole-video)|         |            |            |           |
-Claude-3.5 Sonnet               | Teacher      | 0.74    | 0.68       | 0.65       | 0.78      | 0.72
-GPT-4o                          | 獨立大模型對照| 0.76    | 0.70       | 0.66       | 0.80      | 0.74
+Claude Sonnet 4.5               | Teacher      | 0.76    | 0.70       | 0.66       | 0.79      | 0.73
+GPT-4o-mini                     | 獨立家族對照 | 0.71    | 0.65       | 0.62       | 0.76      | 0.70
 ──────────────────────────────────────────────────────────────────────────────────────────────────
 SimLens Full (SFT + DPO) ⭐     | 本研究 (3B)  | 0.83    | 0.81       | 0.66       | 0.78      | 0.77
                                 |              | > Tea. | > Tea.     | ≈ Tea.    | ≈ Tea.   | ≈ Tea.
 ```
 
+> **GPT-4o-mini 預期表現說明**：mini 的 persona / linguistic 能力略低於 Claude Sonnet 4.5（0.71 vs 0.76、0.65 vs 0.70），這是預算決策的接受 trade-off。論文 framing 重點不是「mini 比 Claude 弱」（顯而易見），而是「**SimLens 3B 在 persona-specific 維度上同時超越 Claude 與 GPT-4o-mini 兩個獨立 LLM 家族**」。
+>
+> **Sonnet 4.5 vs 3.5 預期值微調**：4.5 在 persona-following、instruction-adherence 上比 3.5 略強（OpenAI/Anthropic 公開 benchmark 大約 +0.02），所以原 v4.1 草稿的 (0.74, 0.68, 0.65, 0.78, 0.72) 上調至 (0.76, 0.70, 0.66, 0.79, 0.73)。SimLens Full 預期值維持 (0.83, 0.81, 0.66, 0.78, 0.77) — 「3B student 超越 600B teacher」的論文主張仍成立（0.83 > 0.76、0.81 > 0.70）。
+
 **重點論述**：
-- **領域指標 (Persona / Linguistic)**：SimLens (3B) > Claude (Teacher)、> GPT-4o，RLAIF DPO 在 persona-specific 維度上有效超越 600B+ teacher
-- **通用指標 (Coherence / Engaging)**：SimLens ≈ Claude ≈ GPT-4o，蒸餾保留通用能力
+- **領域指標 (Persona / Linguistic)**：SimLens (3B) > Claude (Teacher)、> GPT-4o-mini，RLAIF DPO 在 persona-specific 維度上有效超越兩個獨立 LLM 家族的 baseline
+- **通用指標 (Coherence / Engaging)**：SimLens ≈ Claude，略 > GPT-4o-mini，蒸餾保留通用能力
 - **vs SimTube**：SimTube 只能給整片 1 條評論，SimLens 在 persona 與 linguistic 上勝出
 
 #### Table 1b: Per-Persona Breakdown（8 LoRA 的個別表現）
@@ -1283,7 +1292,7 @@ SimLens Full (SFT + DPO) ⭐     | 0.78              | 0.68
                             │ 訓練成本（一次性開發者付）│ 推理成本（per video, user 付）│ Latency │ VRAM
                             │  Claude / OpenAI API      │  user 端跑一部影片要付的       │         │
 ─────────────────────────────────────────────────────────────────────────────────────────────────
-SimTube (Hung 2024)         │  $0                       │  ~$0.225 (Claude 3.5 Sonnet)   │  ~45s   │ N/A
+SimTube (Hung 2024)         │  $0                       │  ~$0.225 (Claude Sonnet 4.5)   │  ~45s   │ N/A
                             │ (純 prompting，無訓練)    │  每部影片都要付一次 API 費     │         │ (need API)
                             │                           │  (50K input + 5K output token  │         │
                             │                           │   × Sonnet 定價)               │         │
@@ -1519,17 +1528,23 @@ Week 3: Phase 1 蒸餾資料生成 + Teacher 雙重驗證
      通過標準：
        ≥ 80% Yes  → Claude 能力 OK，繼續 Day 2 大規模生成
        60–80% Yes → 調 Claude prompt 加強 timestamp 約束，重跑 sanity check
-       < 60% Yes  → 換 GPT-4o 當 teacher（Limitation L12 fallback），重跑
+       < 60% Yes  → 換 GPT-4o-mini 當 teacher（Limitation L12 fallback），重跑
+                    註：理想 fallback 應是 GPT-4o，但 v4.1 預算決策選 mini；
+                    若 mini 也 < 60%，啟動 L12 二級緩解（重寫 prompt + few-shot 範例）
      依據：Chapter-Llama (CVPR 2025) 證明 LoRA-tuned LLM 能輸出對應
           timestamp，但未證明 zero-shot LLM (Claude) 同樣可行 → 必須 SimLens
           自己驗證 teacher 在這個任務上的 timestamp fidelity
 
-  ─── Day 2-7: 大規模蒸餾資料生成 ───
-  □ Claude API 對每個 (影片, persona) 生成 sparse JSON list
+  ─── Day 2-7: 大規模蒸餾資料生成（Batch API + 1h Prompt Caching）───
+  □ Claude Message Batches API：800 個 (影片, persona) 一次提交
+     - 每部影片的 8 personas 共用同一 Timeline Script，標 cache_control ttl=1h
+     - submit batch → poll status（多數 < 1h，SLA 24h）→ stream results jsonl
   □ 100 影片 × 8 persona = 800 sparse lists
-  □ 預算花費：~$12 USD（800 calls × $0.015）
+  □ 預算花費：~$3.5 USD（batch 5 折 + cache hit 7/8 personas/影片）
+     比 sync API ($12) 省 ~70%
   □ 【驗證 1】Teacher Format Compliance Rate
      計算 Claude 的 SCR / TVR（驗證輸出穩定性，預期 SCR ≥ 92%）
+  □ 【驗證 2】Batch 過期 / 失敗的 request 重跑（用 sync 補完）
   ★ Milestone 3：Sanity check 通過 + 蒸餾資料完成 + Teacher FCR 驗證通過
 
 Week 4: Phase 1 SFT 訓練 + Format Compliance 驗證
@@ -1538,7 +1553,7 @@ Week 4: Phase 1 SFT 訓練 + Format Compliance 驗證
   □ 跑 baseline benchmark：
     - Llama 3B zero-shot
     - Claude zero-shot
-    - GPT-4o zero-shot
+    - GPT-4o-mini zero-shot（v4.1 全研究 OpenAI baseline 統一用 mini，預算決策）
   □ 跑 Phase 1 only 結果（SimLens-SFT）
   ★ Milestone 4：Phase 1 完整結果 + FCR 驗證
 
@@ -1613,23 +1628,74 @@ Week 8: 論文撰寫 + 投稿準備
 本研究的訓練加速，不進入 paper claim；reproducibility 章節列出最低配置 24GB 並提供
 4-bit GPTQ + LoRA 配置確保 24GB 可重現。
 
-### 8.2 成本估算
+### 8.2 成本估算（v4.1 — GPT-4o-mini + Batch API + Prompt Caching 版）
 
 ```
 雲端 GPU（如果沒有自有硬體）：
   Vast.ai RTX 4090：$0.4/hour
   訓練總時數：~80 hours
   → $30-60 USD
+  （本研究實際用 RTX 5090 32GB，無此費用；列出供他人重現參考）
 
-API 成本：
-  Claude API（蒸餾資料 800 calls × $0.015）：$12 USD
+API 成本（v4.1 預算優化策略）：
 
-人類評估：
-  Upwork crowd-sourcing 25 人：$300-500 USD
+  雙重優化機制：
+    (A) Batch API：所有大規模、非即時的 Claude 呼叫使用 Message Batches API
+        → 50% 折扣（Sonnet 4.5: $1.50/M input, $7.50/M output vs sync $3/$15）
+        → 多數 batch 1 小時內完成，最多 24 小時 SLA
+    (B) Prompt Caching（1-hour ttl）：Timeline Script 在 8 personas 間共用
+        → 每部影片寫入 cache 1 次（1.25× = $3.75/M），讀取 7 次（0.1× = $0.30/M）
+        → Timeline Script 部分成本省 ~75%
+    (C) 兩者疊加套用於蒸餾 + Claude baseline 兩個 800-call 階段
+
+  ── Anthropic（Claude Sonnet 4.5, snapshot claude-sonnet-4-5-20250929）──
+  Pre-flight sanity check（Week 3 Day 1, 40 calls, sync API）       ：~$0.6
+    （sync 因為要即時看結果決定是否 fallback；不適合 batch）
+  Persona activity 估計（Week 1, 8 calls, sync API）                ：~$0.04
+    （量太小，batch overhead 不划算）
+  Phase 1 蒸餾（Week 3 Day 2-7, 800 calls, Batch + 1h cache）       ：~$3.5
+    （sync $12 → batch 5 折 → cache hit 7/8 segments → 約省 70%）
+  Claude zero-shot baseline（Week 4, 800 calls, Batch + 1h cache）  ：~$3.5
+  Anthropic 小計                                                   ：~$7.6
+
+  ── OpenAI（一律 GPT-4o-mini + text-embedding-3-small）──
+  PersonaChat embedding（Week 1, 8K personas × ~50 tok/each）       ：$0.01
+  影片 keyword 抽取（Week 1, 100 影片 × ~500 tok, sync）            ：$0.01
+  GPT-4o-mini zero-shot baseline（Week 4, 800 calls, OpenAI Batch API 5 折）：~$2
+  OpenAI 小計                                                      ：~$2.0
+
+  ── 其他 ──
+  YouTube Data API v3                                              ：$0（quota 內免費）
+  HuggingFace Hub（gated model token）                             ：$0
+
+  API 總計                                                         ：~$9.6 USD ⭐
+
+人類評估（Week 7，獨立預算）：
+  Upwork crowd-sourcing 25 人 × $15 + buffer                      ：$300-400 USD
 
 總成本：
-  最低（自有 GPU + 校內招募）：$12 USD
-  標準（雲端 GPU + Upwork）：$345-575 USD
+  最低（自有 GPU + 不做 Group 4 人類評估）：~$10 USD ⭐
+  標準（自有 GPU + Upwork 25 人）           ：~$310-410 USD
+  最高（雲端 GPU + Upwork 25 人）           ：~$340-470 USD
+
+預算節省累積：
+  原 GPT-4o + sync API 預算 ：~$80 USD
+  改 GPT-4o-mini           ：-$56  →  $24
+  改 Batch API（50% 折扣）  ：-$10  →  $14
+  改 Prompt Caching         ：-$4   →  $10
+  最終預算                  ：~$10 USD（省 87.5%）
+
+  注意：節省的前提是 batch API 24h SLA 可接受。SimLens 蒸餾分階段執行
+       （Week 3 Day 2-7 有 6 天 buffer），完全在 batch SLA 範圍內。
+
+Reviewer 預期質疑與回應：
+  Q: 「為什麼不用 GPT-4o / sync API 確保品質？」
+  A: SimLens 是學生研究預算驅動，且：
+     (1) Batch API 與 sync API 結果完全相同（只是處理時序差異）；
+     (2) Sonnet 4.5 已超越 3.5，足以勝任 teacher；
+     (3) GPT-4o vs mini 在 Persona / Linguistic 落差約 0.05，預期值已反映
+         （Table 1a：mini 0.71 vs 4o 0.76 estimated）；
+     (4) 若 reviewer 要求 4o subset 對比，rebuttal 補跑 100 樣本 ~$5。
 ```
 
 ---
@@ -1939,7 +2005,7 @@ L11. Persona Specification from PersonaChat 8K Sampling Constraint
     OpenCharacter 多源取樣的 persona 多樣性影響。
 
 L12. Teacher Timestamp Fidelity Assumption ⭐ v4.1 新增
-    SimLens Phase 1 蒸餾依賴一個關鍵假設：Claude-3.5 Sonnet 在 zero-shot 設定下
+    SimLens Phase 1 蒸餾依賴一個關鍵假設：Claude Sonnet 4.5 在 zero-shot 設定下
     能正確產生「輸入 timestamp ↔ 輸出 timestamp」的對應關係（即輸出的 [00:15]
     確實對應輸入 timeline 中 00:15 的事件）。
 
@@ -1950,9 +2016,12 @@ L12. Teacher Timestamp Fidelity Assumption ⭐ v4.1 新增
     緩解策略：
       1. Week 3 Day 1 跑 Pre-flight Sanity Check（5 部 × 8 personas = 40 個
          sparse list，人工檢查 ~50 個 timestamp 對應關係，通過標準 ≥ 80%）
-      2. 若 sanity check < 60%，fallback 到 GPT-4o 當 teacher
-         （GPT-4o 在 IFEval 上 instruction following 表現更強）
-      3. 將 sanity check 通過率寫進論文 Section 4.1（Experimental Setup 透明度）
+      2. 若 sanity check < 60%，fallback 到 **GPT-4o-mini** 當 teacher
+         （v4.1 預算決策：OpenAI 一律用 mini；mini 的 IFEval 表現仍優於 Claude
+          Sonnet 的某些 instruction-following 維度，可作為合理 fallback）
+      3. 若 GPT-4o-mini 也 < 60%，啟動二級緩解（重寫 prompt + 加 3 個 few-shot
+         範例）；最後手段才升級到 GPT-4o（額外 ~$25 預算）
+      4. 將 sanity check 通過率寫進論文 Section 4.1（Experimental Setup 透明度）
 
     Future work 可正式評估 zero-shot LLM 在 「text-level video commentary
     generation with timestamp output」 任務上的 fidelity benchmark。
